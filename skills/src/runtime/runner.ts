@@ -13,15 +13,19 @@ import { readRuntimeConfig, setModelTiers } from '../shared/models'
 import { parseAgentJson } from '../shared/utils'
 import { createModelSemaphores } from './semaphore'
 import { appendMetricsLine, buildMetricsLine, currentTime, resolveRunId } from './metrics'
-import type { MetricsOutcome } from './metrics'
 import { validateAgainstSchema } from './validate'
-import { FakeExecutor } from './fake-executor'
+import { selectExecutor } from './executors'
 import { nodeShell } from './shell'
+import type { ShellFn } from '../shared/agents'
 
-export type ShellFn = (
-  script: string,
-  opts: { cwd: string; timeoutMs: number },
-) => Promise<{ exit_code: number; stdout: string; stderr: string }>
+export type { ShellFn } from '../shared/agents'
+
+/** Semaphore key for shell batches; width from runtime.concurrency.shell
+ *  (default 1, like any unlisted key). PERF-002. */
+export const SHELL_CONCURRENCY_KEY = 'shell'
+
+/** A workflow({ name }) is one bare bundle name (SEC-002). */
+const WORKFLOW_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 export interface RunBundleOptions {
   bundlePath: string
@@ -87,11 +91,21 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
   const semaphores = createModelSemaphores(runtime.concurrency)
   const headers = { 'X-Client': runtime.client, 'X-Priority': runtime.priority }
 
+  // Shell batches take the same semaphores under their own key, so parallel()
+  // lanes cannot start an unbounded number of test suites at once (PERF-002).
+  const boundedShell: ShellFn = async (script, shellOpts) => {
+    const release = await semaphores.acquire(SHELL_CONCURRENCY_KEY, SHELL_CONCURRENCY_KEY)
+    try {
+      return await shell(script, shellOpts)
+    } finally {
+      release()
+    }
+  }
+
   // One executor call plus its metrics line. The line is written before any
   // rejection so failed calls are recorded; a write error takes precedence
   // over the executor error (no silent drop). A reply that fails schema
-  // validation is recorded as 'invalid' (outcome is widened locally because
-  // the MetricsOutcome type lives outside this lane's files).
+  // validation is recorded as 'invalid'.
   const attempt = async (
     prompt: string,
     agentOpts: StageOpts,
@@ -126,7 +140,7 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
         queueWaitMs: acquiredAt - enteredAt,
         wallMs: performance.now() - acquiredAt,
         attempt: attemptNo,
-        outcome: (failed ? 'error' : valid ? 'ok' : 'invalid') as MetricsOutcome,
+        outcome: failed ? 'error' : valid ? 'ok' : 'invalid',
       }),
     )
     if (failed || reply === undefined) throw failure
@@ -214,15 +228,16 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
   // closures as the parent; only `args` differs.
   const execute = (source: string, scriptArgs: unknown): Promise<unknown> => {
     const fn = new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'workflow', 'shell', 'args', 'budget', source)
-    return fn(agent, parallel, pipeline, phase, log, workflow, shell, scriptArgs, budget)
+    return fn(agent, parallel, pipeline, phase, log, workflow, boundedShell, scriptArgs, budget)
   }
 
   // A scriptPath wins over name; a name resolves to <dir>/<name>.js in the
-  // first skills dir that has it.
+  // first skills dir that has it, and must be a bare name (SEC-002).
   const workflow = async (ref: { name?: string; scriptPath?: string }, childArgs?: unknown): Promise<unknown> => {
     let path: string | undefined = ref.scriptPath
     if (path === undefined) {
       const name = ref.name ?? ''
+      if (!WORKFLOW_NAME_RE.test(name)) throw new Error(`workflow_name_invalid: ${JSON.stringify(name)} is not a bare bundle name`)
       path = opts.skillsDirs.map((dir) => join(dir, `${name}.js`)).find((candidate) => existsSync(candidate))
       if (path === undefined) {
         throw new Error(`workflow_not_found: ${name} (searched: ${opts.skillsDirs.join(', ')})`)
@@ -235,20 +250,21 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
   // shell and the run's args as globals: runBatch resolves its shell and cwd
   // from globalThis (CORR-001: passed only as function parameters, every
   // runBatch inside a real bundle fell back to the LLM runner). The previous
-  // values are restored when the bundle settles, so a nested run cannot leak.
+  // values (datumRuntime included, ARCH-004) are restored when the bundle
+  // settles, so a nested or concurrent run cannot leak or clear another's.
   const g = globalThis as Record<string, unknown>
-  const saved = { shell: g.shell, args: g.args, hadShell: 'shell' in g, hadArgs: 'args' in g }
+  const keys = ['datumRuntime', 'shell', 'args'] as const
+  const saved = keys.map((k) => ({ k, had: k in g, v: g[k] }))
   g.datumRuntime = { agentTypes: true }
-  g.shell = shell
+  g.shell = boundedShell
   g.args = args
   try {
     return await execute(rootSource, args)
   } finally {
-    delete g.datumRuntime
-    if (saved.hadShell) g.shell = saved.shell
-    else delete g.shell
-    if (saved.hadArgs) g.args = saved.args
-    else delete g.args
+    for (const { k, had, v } of saved) {
+      if (had) g[k] = v
+      else delete g[k]
+    }
   }
 }
 
@@ -288,11 +304,10 @@ export async function main(argv: readonly string[], io: MainIo): Promise<number>
     const config = JSON.parse(readFileSync(flags['--config'][0], 'utf8')) as Record<string, unknown>
     const runtime = readRuntimeConfig(config)
     const bundleTiers = typeof config.models === 'object' && config.models !== null ? (config.models as Partial<Record<ModelTier, string>>) : {}
-    if (runtime.kind !== 'fake') throw new Error(`runtime_kind_unsupported: ${runtime.kind}`)
     const result = await runBundle({
       bundlePath: flags['--bundle'][0],
       args,
-      executor: new FakeExecutor([], { text: '{}' }),
+      executor: selectExecutor(runtime),
       shell: nodeShell,
       skillsDirs: flags['--skills-dir'],
       log: (line) => io.stderr(`${line}\n`),

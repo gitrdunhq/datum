@@ -10,6 +10,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from datum.models.closeout_data_schema import CloseoutData
+from datum.run_ids import run_id_arg
 
 COLLECTORS = [
     "git",
@@ -27,7 +28,7 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--run-id", type=run_id_arg, required=True)
     parser.add_argument("--merge-sha", required=True)
     # Optional: the closeout batch (skills/src/shared/lane-steps.ts) never
     # passed it, so `required=True` made every run exit 2 with a usage message

@@ -5,6 +5,8 @@ import json
 import subprocess
 from pathlib import Path
 
+from datum.run_ids import run_id_arg
+
 MARKER = Path(".datum/runs/.collect-git.done")
 
 
@@ -23,7 +25,7 @@ def main() -> None:
     import sys
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--run-id", type=run_id_arg, required=True)
     parser.add_argument("--base-sha", required=True)
     parser.add_argument("--merge-sha", required=True)
     # #482 — set by closeoutCollectSteps only when base-sha fell back to a

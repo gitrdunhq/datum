@@ -136,6 +136,12 @@ ${content}`);
   ].join("\n");
 }
 
+// assets/runtime-kinds.json
+var runtime_kinds_default = {
+  kinds: ["fake", "pi"],
+  unavailable: ["pi"]
+};
+
 // skills/src/shared/models.ts
 var DEFAULT_TIERS = {
   fast: "haiku",
@@ -170,6 +176,7 @@ function mergeConfig(globalCfg, repoCfg2) {
   }
   return merged;
 }
+var RUNTIME_KINDS = runtime_kinds_default.kinds;
 
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {

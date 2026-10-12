@@ -5,6 +5,12 @@ export const meta = {
   phases: []
 };
 
+// assets/runtime-kinds.json
+var runtime_kinds_default = {
+  kinds: ["fake", "pi"],
+  unavailable: ["pi"]
+};
+
 // skills/src/shared/models.ts
 var DEFAULT_TIERS = {
   fast: "haiku",
@@ -46,6 +52,7 @@ function skillPath(skillsDir, name) {
   if (skillsDir) return `${skillsDir}/${name}.js`;
   return `skills/${name}.js`;
 }
+var RUNTIME_KINDS = runtime_kinds_default.kinds;
 
 // skills/src/shared/utils.ts
 function buildWaves(lanePlan2) {

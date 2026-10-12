@@ -6,7 +6,8 @@ import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { StageReply } from './executor'
 
-export type MetricsOutcome = 'ok' | 'error'
+// SPEC R7.1: a reply that fails schema validation is recorded as 'invalid'.
+export type MetricsOutcome = 'ok' | 'invalid' | 'error'
 
 export interface MetricsLine {
   ts: string
@@ -57,11 +58,19 @@ export function deriveRunId(start: Date): string {
   )
 }
 
-/** args.runId when it is a non-empty string, otherwise the derived id. */
+/** One plain path segment: the id becomes .datum/runs/<runId> (SEC-001).
+ *  Same pattern as datum/run_ids.py on the Python side. */
+export const RUN_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+
+/** args.runId when it is a non-empty string, otherwise the derived id. An id
+ *  that is not one plain path segment throws run_id_invalid. */
 export function resolveRunId(args: unknown, start: Date): string {
   if (typeof args === 'object' && args !== null) {
     const id = (args as { runId?: unknown }).runId
-    if (typeof id === 'string' && id !== '') return id
+    if (typeof id === 'string' && id !== '') {
+      if (!RUN_ID_RE.test(id)) throw new Error(`run_id_invalid: ${JSON.stringify(id)} is not one plain path segment (${RUN_ID_RE.source})`)
+      return id
+    }
   }
   return deriveRunId(start)
 }

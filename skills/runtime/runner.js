@@ -4,6 +4,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { join as join2, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+// assets/runtime-kinds.json
+var runtime_kinds_default = {
+  kinds: ["fake", "pi"],
+  unavailable: ["pi"]
+};
+
 // skills/src/shared/models.ts
 var DEFAULT_TIERS = {
   fast: "haiku",
@@ -14,7 +20,7 @@ var activeTiers = { ...DEFAULT_TIERS };
 function setModelTiers(tiers) {
   activeTiers = { ...DEFAULT_TIERS, ...tiers };
 }
-var RUNTIME_KINDS = ["fake", "pi"];
+var RUNTIME_KINDS = runtime_kinds_default.kinds;
 var RUNTIME_TIERS = ["fast", "balanced", "deep"];
 function isRecord(v) {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -152,10 +158,14 @@ function currentTime() {
 function deriveRunId(start) {
   return `${pad(start.getUTCFullYear(), 4)}${pad(start.getUTCMonth() + 1)}${pad(start.getUTCDate())}-${pad(start.getUTCHours())}${pad(start.getUTCMinutes())}${pad(start.getUTCSeconds())}`;
 }
+var RUN_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 function resolveRunId(args, start) {
   if (typeof args === "object" && args !== null) {
     const id = args.runId;
-    if (typeof id === "string" && id !== "") return id;
+    if (typeof id === "string" && id !== "") {
+      if (!RUN_ID_RE.test(id)) throw new Error(`run_id_invalid: ${JSON.stringify(id)} is not one plain path segment (${RUN_ID_RE.source})`);
+      return id;
+    }
   }
   return deriveRunId(start);
 }
@@ -268,49 +278,90 @@ var FakeExecutor = class {
   }
 };
 
+// skills/src/runtime/executors.ts
+function selectExecutor(runtime) {
+  if (runtime.kind === "fake") return new FakeExecutor([], { text: "{}" });
+  throw new Error(`runtime_kind_unsupported: ${runtime.kind}`);
+}
+
 // skills/src/runtime/shell.ts
 import { spawn } from "node:child_process";
-var nodeShell = (script, opts) => new Promise((resolve2, reject) => {
-  const child = spawn("bash", ["-c", script], {
-    cwd: opts.cwd,
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true
-  });
-  let stdout = "";
-  let stderr = "";
-  let settled = false;
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  child.stdout.on("data", (chunk) => {
-    stdout += chunk;
-  });
-  child.stderr.on("data", (chunk) => {
-    stderr += chunk;
-  });
-  const finish = (fn) => {
-    if (settled) return;
-    settled = true;
-    clearTimeout(timer);
-    fn();
-  };
-  const timer = setTimeout(() => {
-    finish(() => {
+var DEFAULT_MAX_STDOUT_CHARS = 16 * 1024 * 1024;
+var DEFAULT_MAX_STDERR_CHARS = 64 * 1024;
+function createNodeShell(limits = {}) {
+  const maxStdout = limits.maxStdoutChars ?? DEFAULT_MAX_STDOUT_CHARS;
+  const maxStderr = limits.maxStderrChars ?? DEFAULT_MAX_STDERR_CHARS;
+  return (script, opts) => new Promise((resolve2, reject) => {
+    const child = spawn("bash", ["-c", script], {
+      cwd: opts.cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true
+    });
+    let stdout = "";
+    let stderrTail = "";
+    let stderrDropped = 0;
+    let settled = false;
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    const killGroup = () => {
       try {
         if (child.pid !== void 0) process.kill(-child.pid, "SIGKILL");
       } catch {
         child.kill("SIGKILL");
       }
-      reject(new Error(`shell timeout after ${opts.timeoutMs}ms`));
+    };
+    const finish = (fn) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn();
+    };
+    child.stdout.on("data", (chunk) => {
+      if (settled) return;
+      if (stdout.length + chunk.length > maxStdout) {
+        finish(() => {
+          killGroup();
+          reject(new Error(`shell_output_too_large: stdout passed ${maxStdout} characters; the script was killed`));
+        });
+        return;
+      }
+      stdout += chunk;
     });
-  }, opts.timeoutMs);
-  child.on("error", (err) => finish(() => reject(err)));
-  child.on(
-    "close",
-    (code, signal) => finish(() => resolve2({ exit_code: code ?? (signal ? 128 : 1), stdout, stderr }))
-  );
-});
+    child.stderr.on("data", (chunk) => {
+      const joined = stderrTail + chunk;
+      if (joined.length > maxStderr) {
+        stderrDropped += joined.length - maxStderr;
+        stderrTail = joined.slice(joined.length - maxStderr);
+      } else {
+        stderrTail = joined;
+      }
+    });
+    const timer = setTimeout(() => {
+      finish(() => {
+        killGroup();
+        reject(new Error(`shell timeout after ${opts.timeoutMs}ms`));
+      });
+    }, opts.timeoutMs);
+    child.on("error", (err) => finish(() => reject(err)));
+    child.on(
+      "close",
+      (code, signal) => finish(() => {
+        let stderr = stderrTail;
+        if (stderrDropped > 0) {
+          const nl = stderr.indexOf("\n");
+          stderr = `[stderr truncated: ${stderrDropped} earlier characters dropped]
+${nl >= 0 ? stderr.slice(nl + 1) : stderr}`;
+        }
+        resolve2({ exit_code: code ?? (signal ? 128 : 1), stdout, stderr });
+      })
+    );
+  });
+}
+var nodeShell = createNodeShell();
 
 // skills/src/runtime/runner.ts
+var SHELL_CONCURRENCY_KEY = "shell";
+var WORKFLOW_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 var AsyncFunction = Object.getPrototypeOf(async function() {
 }).constructor;
 var TIERS = ["fast", "balanced", "deep"];
@@ -337,6 +388,14 @@ async function runBundle(opts) {
   };
   const semaphores = createModelSemaphores(runtime.concurrency);
   const headers = { "X-Client": runtime.client, "X-Priority": runtime.priority };
+  const boundedShell = async (script, shellOpts) => {
+    const release = await semaphores.acquire(SHELL_CONCURRENCY_KEY, SHELL_CONCURRENCY_KEY);
+    try {
+      return await shell(script, shellOpts);
+    } finally {
+      release();
+    }
+  };
   const attempt = async (prompt, agentOpts, model, attemptNo, validate) => {
     const enteredAt = performance.now();
     const release = await semaphores.acquire(model, agentOpts.agentType);
@@ -438,12 +497,13 @@ async function runBundle(opts) {
   };
   const execute = (source, scriptArgs) => {
     const fn = new AsyncFunction("agent", "parallel", "pipeline", "phase", "log", "workflow", "shell", "args", "budget", source);
-    return fn(agent, parallel, pipeline, phase, log, workflow, shell, scriptArgs, budget);
+    return fn(agent, parallel, pipeline, phase, log, workflow, boundedShell, scriptArgs, budget);
   };
   const workflow = async (ref, childArgs) => {
     let path = ref.scriptPath;
     if (path === void 0) {
       const name = ref.name ?? "";
+      if (!WORKFLOW_NAME_RE.test(name)) throw new Error(`workflow_name_invalid: ${JSON.stringify(name)} is not a bare bundle name`);
       path = opts.skillsDirs.map((dir) => join2(dir, `${name}.js`)).find((candidate) => existsSync(candidate));
       if (path === void 0) {
         throw new Error(`workflow_not_found: ${name} (searched: ${opts.skillsDirs.join(", ")})`);
@@ -452,18 +512,18 @@ async function runBundle(opts) {
     return execute(stripMetaExport(readFileSync(path, "utf8")), childArgs);
   };
   const g = globalThis;
-  const saved = { shell: g.shell, args: g.args, hadShell: "shell" in g, hadArgs: "args" in g };
+  const keys = ["datumRuntime", "shell", "args"];
+  const saved = keys.map((k) => ({ k, had: k in g, v: g[k] }));
   g.datumRuntime = { agentTypes: true };
-  g.shell = shell;
+  g.shell = boundedShell;
   g.args = args;
   try {
     return await execute(rootSource, args);
   } finally {
-    delete g.datumRuntime;
-    if (saved.hadShell) g.shell = saved.shell;
-    else delete g.shell;
-    if (saved.hadArgs) g.args = saved.args;
-    else delete g.args;
+    for (const { k, had, v } of saved) {
+      if (had) g[k] = v;
+      else delete g[k];
+    }
   }
 }
 var MAIN_FLAGS = ["--bundle", "--args", "--config", "--repo-root", "--skills-dir"];
@@ -488,11 +548,10 @@ async function main(argv, io) {
     const config = JSON.parse(readFileSync(flags["--config"][0], "utf8"));
     const runtime = readRuntimeConfig(config);
     const bundleTiers = typeof config.models === "object" && config.models !== null ? config.models : {};
-    if (runtime.kind !== "fake") throw new Error(`runtime_kind_unsupported: ${runtime.kind}`);
     const result = await runBundle({
       bundlePath: flags["--bundle"][0],
       args,
-      executor: new FakeExecutor([], { text: "{}" }),
+      executor: selectExecutor(runtime),
       shell: nodeShell,
       skillsDirs: flags["--skills-dir"],
       log: (line) => io.stderr(`${line}
@@ -520,6 +579,7 @@ if (processArgv[1] !== void 0 && import.meta.url === pathToFileURL(resolve(proce
   });
 }
 export {
+  SHELL_CONCURRENCY_KEY,
   main,
   resolveModel,
   runBundle

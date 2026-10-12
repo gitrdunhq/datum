@@ -8,6 +8,12 @@ export const meta = {
   ]
 };
 
+// assets/runtime-kinds.json
+var runtime_kinds_default = {
+  kinds: ["fake", "pi"],
+  unavailable: ["pi"]
+};
+
 // skills/src/shared/models.ts
 var DEFAULT_TIERS = {
   fast: "haiku",
@@ -18,6 +24,7 @@ var activeTiers = { ...DEFAULT_TIERS };
 function model(tier) {
   return activeTiers[tier];
 }
+var RUNTIME_KINDS = runtime_kinds_default.kinds;
 
 // skills/src/shared/utf8.ts
 function utf8Encode(s) {

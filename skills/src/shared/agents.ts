@@ -214,8 +214,10 @@ export interface RunBatchDeps {
   shell?: ShellFn
 }
 
-type ShellResult = { exit_code: number; stdout: string; stderr: string }
-type ShellFn = (script: string, opts: { cwd: string; timeoutMs: number }) => Promise<ShellResult>
+// The one shell signature: the runner (runtime/runner.ts), nodeShell
+// (runtime/shell.ts) and the sandbox global (sandbox.d.ts) all use it (ARCH-002).
+export type ShellResult = { exit_code: number; stdout: string; stderr: string }
+export type ShellFn = (script: string, opts: { cwd: string; timeoutMs: number }) => Promise<ShellResult>
 
 /** The shell seam: deps.shell, else the ambient global, else none. */
 function resolveShell(deps?: RunBatchDeps): ShellFn | null {

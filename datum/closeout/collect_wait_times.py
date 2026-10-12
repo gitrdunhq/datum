@@ -8,10 +8,12 @@ import json
 import sys
 from pathlib import Path
 
+from datum.run_ids import run_id_arg
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Collect phase wait times for VSM")
-    parser.add_argument("--run-id", required=True, help="DATUM run ID")
+    parser.add_argument("--run-id", type=run_id_arg, required=True, help="DATUM run ID")
     parser.add_argument("--state-dir", default=".datum", help="DATUM state directory")
     args = parser.parse_args()
 

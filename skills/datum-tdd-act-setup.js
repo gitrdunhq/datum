@@ -5,6 +5,12 @@ export const meta = {
   phases: [{ title: "Setup" }]
 };
 
+// assets/runtime-kinds.json
+var runtime_kinds_default = {
+  kinds: ["fake", "pi"],
+  unavailable: ["pi"]
+};
+
 // skills/src/shared/models.ts
 var DEFAULT_TIERS = {
   fast: "haiku",
@@ -15,6 +21,7 @@ var activeTiers = { ...DEFAULT_TIERS };
 function model(tier) {
   return activeTiers[tier];
 }
+var RUNTIME_KINDS = runtime_kinds_default.kinds;
 
 // skills/src/shared/utils.ts
 function findMatchingBracketEnd(text, start) {

@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+from datum.run_ids import run_id_arg
+
 _TOKEN_FIELDS = ("prompt_tokens", "completion_tokens", "cached_tokens")
 
 
@@ -70,7 +72,7 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--run-id", type=run_id_arg, required=True)
     args = parser.parse_args()
 
     marker = Path(f".datum/runs/{args.run_id}/.collect-token-metrics.done")

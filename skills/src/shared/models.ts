@@ -1,3 +1,4 @@
+import runtimeKinds from '../../../assets/runtime-kinds.json'
 export type ModelTier = 'fast' | 'balanced' | 'deep'
 export type ModelName = string
 
@@ -105,7 +106,8 @@ export interface RuntimeConfig {
   client: string
 }
 
-const RUNTIME_KINDS: readonly string[] = ['fake', 'pi']
+// One list for both sides (ARCH-005): datum/workflow_run.py reads the same file.
+const RUNTIME_KINDS: readonly string[] = runtimeKinds.kinds
 const RUNTIME_TIERS: readonly ModelTier[] = ['fast', 'balanced', 'deep']
 
 function isRecord(v: unknown): v is Record<string, unknown> {

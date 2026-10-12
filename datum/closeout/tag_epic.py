@@ -7,6 +7,8 @@ import sys
 from datetime import UTC, datetime, timezone
 from pathlib import Path
 
+from datum.run_ids import run_id_arg
+
 
 def git(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], capture_output=True, text=True)
@@ -16,7 +18,7 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--run-id", type=run_id_arg, required=True)
     parser.add_argument("--epic-number", type=int, required=True)
     parser.add_argument("--merge-sha", required=True)
     args = parser.parse_args()

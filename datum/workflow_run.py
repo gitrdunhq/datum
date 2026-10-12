@@ -11,16 +11,24 @@ Exit codes: 0 ok, 1 runner failed, 2 usage error (nothing was spawned).
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
+
+from datum.path_utils import assets_dir
 
 # Module-level seam: tests point this at a stub runner.
 RUNNER_PATH: Path = Path(__file__).resolve().parent.parent / "skills" / "runtime" / "runner.js"
 PACKAGE_SKILLS_DIR: Path = Path(__file__).resolve().parent.parent / "skills"
 RUNNER_TIMEOUT_SECONDS = 3600
-RUNTIME_KINDS = ("fake", "pi")
-UNAVAILABLE_KINDS = ("pi",)  # Q5 default: declared but not implemented yet
+# One list for both sides (ARCH-005): skills/src/shared/models.ts imports the
+# same file. "unavailable" kinds parse but have no executor yet (Q5).
+_KINDS = json.loads((assets_dir() / "runtime-kinds.json").read_text())
+RUNTIME_KINDS: tuple[str, ...] = tuple(_KINDS["kinds"])
+UNAVAILABLE_KINDS: tuple[str, ...] = tuple(_KINDS["unavailable"])
+# A workflow name is one bare bundle name, never a path (SEC-002).
+WORKFLOW_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class UsageError(Exception):
@@ -50,10 +58,19 @@ def _check_runtime(config: object) -> None:
 
 
 def _find_bundle(name: str, dirs: list[Path]) -> Path:
-    for d in dirs:
-        candidate = d / f"{name}.js"
-        if candidate.is_file():
-            return candidate
+    if not WORKFLOW_NAME_RE.match(name):
+        raise UsageError(f"workflow_name_invalid: {name!r} is not a bare bundle name")
+    found = [d / f"{name}.js" for d in dirs if (d / f"{name}.js").is_file()]
+    if found:
+        if len(found) > 1:
+            # SEC-003: the repo-local copy wins (SPEC R9.2), and runs as
+            # unsandboxed JS; say so instead of shadowing in silence.
+            print(
+                f"workflow_bundle_shadowed: {name} runs {found[0]}, not "
+                f"{', '.join(str(p) for p in found[1:])}",
+                file=sys.stderr,
+            )
+        return found[0]
     searched = ", ".join(str(d) for d in dirs)
     raise UsageError(f"workflow bundle not found: {name}.js (searched {searched})")
 
