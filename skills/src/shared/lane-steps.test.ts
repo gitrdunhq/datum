@@ -2176,3 +2176,24 @@ describe('lane plan digest relay retry (wf_17d9c5ea-ecb)', () => {
     expect(r).toContain('byte for byte')
   })
 })
+
+describe('RUNTIME_ARTIFACT_READ_RE stays inside one path expression (DAT-19, wf_4c2c9deb-a1f)', () => {
+  const re = new RegExp(RUNTIME_ARTIFACT_READ_RE)
+  it('does not match a .resolve() on one side of a comparison and a fixture .datum on the other', () => {
+    // Catches: RED failed red_reads_runtime_artifact on an assertion that
+    // compares a CLI flag with the test's own tmp_path config, because the
+    // `.resolve()` arm reached across `==` and `(` into the fixture path.
+    for (const line of [
+      '    assert Path(repo.flag(call, "--config")).resolve() == (repo.root / ".datum" / "config.json").resolve()',
+      '    assert out.resolve() == (tmp_path / ".datum")',
+    ]) expect(line, line).not.toMatch(re)
+  })
+  it('still matches a repo-root read written in one expression', () => {
+    // Catches: the narrowing losing the reads #499 exists to stop.
+    for (const line of [
+      'p = Path(__file__).resolve().parents[1] / ".datum" / "state.db"',
+      'cfg = Path(__file__).resolve() / ".datum"',
+      'const p = join(process.cwd(), ".datum", "pipeline-state.json")',
+    ]) expect(line, line).toMatch(re)
+  })
+})

@@ -275,7 +275,10 @@ export function testExitCode(stdout: string | null | undefined): number | null {
  *  A lowercase `repo_root` is not in the list: in a test it is a tmp_path
  *  fixture, and a lane whose subject is `.datum/config.json` reads it
  *  legitimately (monotonic-task-ids task-008). */
-export const RUNTIME_ARTIFACT_READ_RE = `(REPO_ROOT|ROOT_DIR|__dirname|process\\.cwd\\(\\)|parents\\[[0-9]+\\]|\\.resolve\\(\\)).{0,80}['"/]\\.datum(/|['"])`
+// The gap may not cross `=` or `(`: a repo-root anchor and a `.datum` on the
+// two sides of a comparison are two expressions (DAT-19: `x.resolve() ==
+// (tmp_root / ".datum" ...)` compared a flag with the test's own fixture).
+export const RUNTIME_ARTIFACT_READ_RE = `(REPO_ROOT|ROOT_DIR|__dirname|process\\.cwd\\(\\)|parents\\[[0-9]+\\]|\\.resolve\\(\\))[^=(]{0,80}['"/]\\.datum(/|['"])`
 
 export function postRedSteps(o: PostRedOpts): BatchStep[] {
   const steps: BatchStep[] = []
