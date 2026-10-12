@@ -1,0 +1,46 @@
+## Refine — 2026-10-12
+
+### Q1: [Integration] What exact shape should `datum closeout-collect-token-metrics` return for per-stage totals and cached share per agent type?
+> The collector is `datum/closeout/collect_token_metrics.py` (SQLite `token_metrics` table, writes `closeout-raw/token_metrics.json`, emits `no_state_available` with no rows). I'm assuming we keep `per_phase` and the per-model totals unchanged and add three new keys: `per_agent_type` and `per_stage` (each `{calls, prompt_tokens, completion_tokens, cached_tokens}`, with `per_stage` keyed by label prefix) and `cached_share` (agent type to `cached_tokens / prompt_tokens`, 4 decimals, `0.0` when there are no prompt tokens). Is that right, or do you want a different key naming, a different stage definition (phase name versus label prefix), or `cached_share` as a float per agent type nested inside `per_agent_type`? This fixes the pytest assertions and the downstream consumers of `token_metrics.json`.
+
+[Answer]:
+
+### Q2: [Behavior] What are the semantics of the runner's `pipeline`?
+> `sandbox.d.ts` declares `pipeline` but the ticket says only "runs items through the stages in order". I'm assuming `pipeline(items, ...stages)`: each stage is an async function of one item's current value, each item flows through all stages in order with the previous stage's result as input, items run concurrently with one another, and an item whose stage rejects becomes `null` and skips its later stages (same as `parallel`). Is that right, or should a stage receive the whole list, run items strictly one after another, or abort the whole pipeline on the first failure? Please also confirm how `pipeline.max_concurrent` interacts, since the ticket says it keeps its meaning. This decides the runner code and the pipeline tests.
+
+[Answer]:
+
+### Q3: [Architecture] Do nested `workflow()` children share the parent's per-model semaphores and concurrency budget?
+> I'm assuming children share the parent's semaphore map and metrics sink, because the limits are about what each model server can take and the ticket says children run with the same executor and shell. The alternative is a fresh semaphore map per child, which would let a parent and its child together exceed `concurrency[model]`. Which one do you want? This decides whether the concurrency bound in R6 holds across the whole run or only within one bundle.
+
+[Answer]:
+
+### Q4: [Behavior] What should tier-up retry do when two tiers map to the same model id, or a tier's model id is missing?
+> R8 retries an invalid reply once on the next tier up, "never on the same model". I'm assuming that (a) a missing `models.fast`, `models.balanced` or `models.deep` is a config error raised by `readRuntimeConfig` (`runtime_models_missing: <tier>`); (b) if the next tier resolves to the same model id as the current one, the retry is skipped, `stage_output_invalid: <label>: no distinct higher tier` is logged, and the call returns `null`; (c) a literal model id not in the map (for example `haiku` at `agents.ts:172` and `datum-tdd-act-lane.ts:1946`) is treated as `fast`. Is that right, or should a shared id retry on the same model once anyway, or should a missing tier fall back to the next one that is defined?
+
+[Answer]:
+
+### Q5: [Scope] What does `runBundle` do when the caller supplies no `runtime` block, and is `kind: "pi"` rejected by the runner or only by the CLI?
+> I'm assuming `readRuntimeConfig` never invents `models` (there are no safe default model ids), `runBundle` takes an already-resolved executor from its caller, and `datum workflow run` exits 2 when the config has no `runtime` block and exits 2 with `runtime_kind_unavailable: pi` for `kind: "pi"` because no pi executor ships in this epic. `priority` and `client` still default to `batch` and `datum` when only those keys are absent. Is that right, or should the runner itself also refuse `pi`, or should a missing block fall back to `kind: "fake"` with default tiers?
+
+[Answer]:
+
+### Q6: [Behavior] How is the `attempt` field numbered in `metrics.jsonl` for retried calls?
+> I'm assuming one line per executed request, `attempt` is 1 for the first request of a label and 2 for the tier-up retry, and the first line for an invalid reply has `outcome: "invalid"`. The alternatives are numbering per run across all calls with the same label, or counting only retries from 0. This decides the metrics assertions in the fixture test and how the collector counts calls.
+
+[Answer]:
+
+### Q7: [NFR] Which Node version should datum target for the runner: 22 (ticket), 24 LTS (owner's global rule), or whatever the repo already uses?
+> The ticket pins Node 22 and says no new dependencies; the owner's global homelab rule is Node 24 LTS. The datum repo has no `.nvmrc` or `engines` field, so neither is currently enforced. I'm assuming this epic adds no Node pin and the runner uses only APIs present in both 22 and 24. Is that right, or should we add an `engines` field or `.nvmrc` (and to which version), or change the ticket text to 24?
+
+[Answer]:
+
+### Q8: [Behavior] Which shell command does the fixture's "runBatch-shaped shell work" run, and how is its stdout parsed?
+> I'm assuming the fixture builds a one-step batch, runs it through the real `shell` global (a subprocess `bash -c` wrapper supplied by the test) with a command that prints a fixed JSON row such as `printf '[{"step":"echo","exit_code":0,"stdout":"fixture-shell-ok"}]'`, and parses the stdout with `parseBatchResult`, then asserts the literal `fixture-shell-ok` in the result. This avoids dependence on the `datum` CLI or repo state. Alternatively the fixture could run real `batchScript(steps)` with a real `datum-cli` step (which needs the batch tool prefixes and sha check to be present). Which do you want?
+
+[Answer]:
+
+### Q9: [Architecture] How should the runner turn agent types on so `cli_call_bypassed_runbatch` can fire when `.datum/config.json` has `agent_types: false`?
+> In this repo `stageOpts('cli', ...)` omits `agentType` when `agent_types` is false, so the guard on `opts.agentType === 'datum-cli'` would never trigger. I'm assuming the runner injects `agent_types: true` into the args or config each bundle reads (each bundle calls `configureAgentTypes` from its own args), including nested children. The alternative is to detect `datum-cli` calls by `opts.label` or stage kind, or to change the repo default to `agent_types: true`. Which do you want? Also confirm that converting the `runCommandPrompt` calls in `datum-go.ts` (preflight-tool-check, preflight-gitignore) and the `contextInlineRetryPrompt` calls in `datum-plan.ts`, `datum-properties.ts` and `datum-refine.ts` onto `runBatch` is in scope, since the ticket's grep for `batchCommandPrompt` does not find them.
+
+[Answer]:
