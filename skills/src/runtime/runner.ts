@@ -11,6 +11,8 @@ import { setModelTiers } from '../shared/models'
 import { parseAgentJson } from '../shared/utils'
 import { createModelSemaphores } from './semaphore'
 import { appendMetricsLine, buildMetricsLine, currentTime, resolveRunId } from './metrics'
+import type { MetricsOutcome } from './metrics'
+import { validateAgainstSchema } from './validate'
 
 export type ShellFn = (
   script: string,
@@ -61,8 +63,18 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
   const semaphores = createModelSemaphores(runtime.concurrency)
   const headers = { 'X-Client': runtime.client, 'X-Priority': runtime.priority }
 
-  const agent = async (prompt: string, agentOpts: StageOpts = {}): Promise<unknown> => {
-    const model = resolveModel(runtime, agentOpts.model)
+  // One executor call plus its metrics line. The line is written before any
+  // rejection so failed calls are recorded; a write error takes precedence
+  // over the executor error (no silent drop). A reply that fails schema
+  // validation is recorded as 'invalid' (outcome is widened locally because
+  // the MetricsOutcome type lives outside this lane's files).
+  const attempt = async (
+    prompt: string,
+    agentOpts: StageOpts,
+    model: string,
+    attemptNo: number,
+    validate: ((reply: StageReply) => boolean) | undefined,
+  ): Promise<{ reply: StageReply; valid: boolean }> => {
     const enteredAt = performance.now()
     const release = gated ? await semaphores.acquire(model, agentOpts.agentType) : () => {}
     const acquiredAt = performance.now()
@@ -77,8 +89,7 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
     } finally {
       release()
     }
-    // The line is written before any rejection so failed calls are recorded;
-    // a write error takes precedence over the executor error (no silent drop).
+    const valid = !failed && reply !== undefined && (validate ? validate(reply) : true)
     appendMetricsLine(
       opts.repoRoot,
       buildMetricsLine({
@@ -90,13 +101,48 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
         reply,
         queueWaitMs: acquiredAt - enteredAt,
         wallMs: performance.now() - acquiredAt,
-        attempt: 1,
-        outcome: failed ? 'error' : 'ok',
+        attempt: attemptNo,
+        outcome: (failed ? 'error' : valid ? 'ok' : 'invalid') as MetricsOutcome,
       }),
     )
     if (failed || reply === undefined) throw failure
     addUsage(reply.usage)
-    return parseAgentJson<unknown>(reply.text, null)
+    return { reply, valid }
+  }
+
+  // Tier of a resolved model id; ids outside the models map count as fast.
+  const tierOf = (model: string): ModelTier => {
+    for (const tier of TIERS as readonly ModelTier[]) if (runtime.models[tier] === model) return tier
+    return 'fast'
+  }
+
+  const agent = async (prompt: string, agentOpts: StageOpts = {}): Promise<unknown> => {
+    const model = resolveModel(runtime, agentOpts.model)
+    const schema = agentOpts.schema
+    if (schema === undefined) {
+      const { reply } = await attempt(prompt, agentOpts, model, 1, undefined)
+      return parseAgentJson<unknown>(reply.text, null)
+    }
+    const label = agentOpts.label ?? ''
+    let lastProblems: string[] = []
+    const check = (reply: StageReply): boolean => {
+      lastProblems = validateAgainstSchema(schema, parseAgentJson<unknown>(reply.text, null))
+      return lastProblems.length === 0
+    }
+    const first = await attempt(prompt, agentOpts, model, 1, check)
+    if (first.valid) return parseAgentJson<unknown>(first.reply.text, null)
+    log(`stage_output_invalid: ${label}: ${lastProblems.join(', ')}`)
+    const tier = tierOf(model)
+    if (tier === 'deep') return null
+    const retryModel = runtime.models[tier === 'fast' ? 'balanced' : 'deep']
+    if (retryModel === model) {
+      log(`stage_output_invalid: ${label}: no distinct higher tier`)
+      return null
+    }
+    const second = await attempt(prompt, { ...agentOpts, model: retryModel }, retryModel, 2, check)
+    if (second.valid) return parseAgentJson<unknown>(second.reply.text, null)
+    log(`stage_output_invalid: ${label}: ${lastProblems.join(', ')}`)
+    return null
   }
 
   const parallel = async <T>(thunks: Array<() => Promise<T>>): Promise<(T | null)[]> =>
