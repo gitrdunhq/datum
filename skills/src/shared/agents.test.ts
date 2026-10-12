@@ -269,9 +269,9 @@ describe('verifyCommitIndependently is a bounded deterministic batch', () => {
   const src = _rf(_join(__dirname, 'agents.ts'), 'utf8')
   const fn = src.slice(src.indexOf('export async function verifyCommitIndependently'), src.indexOf('export interface ResilientAgentDeps'))
 
-  it('uses batchCommandPrompt/parseBatchResult and bounds the log to the lane', () => {
-    expect(fn).toMatch(/batchCommandPrompt\(/)
-    expect(fn).toMatch(/parseBatchResult\(/)
+  it('goes through runBatch( (no hand-built batchCommandPrompt) and bounds the log to the lane', () => {
+    expect(fn).toMatch(/runBatch\(/)
+    expect(fn).not.toMatch(/batchCommandPrompt\(/)
     expect(fn).toMatch(/\.\.HEAD|-n \d+/)
     expect(fn).not.toMatch(/model: 'haiku'/)
   })

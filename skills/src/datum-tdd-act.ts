@@ -2,8 +2,8 @@ import { model, setModelTiers } from './shared/models'
 import type { LanePlanDigest, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsResult, TddActArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure, type BatchResult } from './shared/batch'
-import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps, isDigestRelayError, digestRetryPrompt } from './shared/lane-steps'
+import { setBatchCacheKey, setBatchRoot, stepStdout, describeFailure, type BatchResult } from './shared/batch'
+import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps, isDigestRelayError } from './shared/lane-steps'
 import { runBatch } from './shared/agents'
 import { DEFAULT_CONFIG, skillPath } from './shared/models'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
@@ -58,12 +58,7 @@ const actStart = actStartSteps({
   }),
 })
 if (!epicBranch && !a.yolo) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.')
-const actStartPrompt = batchCommandPrompt(actStart)
-const actStartRaw = await agent(
-  actStartPrompt,
-  stageOpts('cli', { label: 'act-start', phase: 'Topology', model: model('fast') }),
-)
-let actStartResult = parseBatchResult(actStartRaw, actStart)
+let actStartResult = await runBatch(actStart, stageOpts('cli', { label: 'act-start', phase: 'Topology', model: model('fast') }))
 epicBranch = epicBranch || (stepStdout(actStartResult, 'branch') || '').trim()
 runId = runId || (stepStdout(actStartResult, 'timestamp') || '').trim()
 
@@ -92,10 +87,7 @@ phase('Topology')
 const firstDigest = lanePlanDigestFromSteps(actStartResult, lanePlanPath)
 if (!firstDigest.ok && isDigestRelayError(firstDigest.error)) {
   log(`[act-start] ${firstDigest.error} — retrying once with a fresh runner`)
-  actStartResult = parseBatchResult(
-    await agent(digestRetryPrompt(actStartPrompt), stageOpts('cli', { label: 'act-start:retry', phase: 'Topology', model: model('fast') })),
-    actStart,
-  )
+  actStartResult = await runBatch(actStart, stageOpts('cli', { label: 'act-start:retry', phase: 'Topology', model: model('fast') }))
 }
 const digestResult = lanePlanDigestFromSteps(actStartResult, lanePlanPath)
 if (!digestResult.ok || !digestResult.digest) throw new Error(digestResult.error)

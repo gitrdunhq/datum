@@ -216,9 +216,11 @@ export function contextFromRelay(probe: BatchResult, inline: BatchResult | null,
   return { branch, epicDir, files, warnings, mismatched }
 }
 
+export const CONTEXT_INLINE_RETRY_MARKER = "# attempt 2 of 2 — the previous runner returned one of these files with bytes missing; copy the script's output verbatim, every byte"
+
 /** The second inline attempt: same script, a distinct prompt (a cache miss on resume). */
 export function contextInlineRetryPrompt(steps: BatchStep[]): string {
-  return `${batchCommandPrompt(steps)}\n\n# attempt 2 of 2 — the previous runner returned one of these files with bytes missing; copy the script's output verbatim, every byte`
+  return `${batchCommandPrompt(steps)}\n\n${CONTEXT_INLINE_RETRY_MARKER}`
 }
 
 /**

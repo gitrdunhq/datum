@@ -86,11 +86,10 @@ export async function verifyCommitIndependently(
     { name: 'log', command: `git -C ${q(wt)} log --format="%H %s" ${range}`, tolerant: true },
     { name: 'status', command: `git -C ${q(wt)} status --porcelain -- ${files.map(q).join(' ')}`, tolerant: true },
   ]
-  const raw = await agent(
-    batchCommandPrompt(steps),
+  const result = await runBatch(
+    steps,
     stageOpts('cli', { label: `verify-commit:${taskId}:${stage}`, model: model('fast') }),
   )
-  const result = parseBatchResult(raw, steps)
   if (result.missing) return { committed: false, detail: `independent check returned no result (${describeFailure(result, 'verify-commit')})` }
   return parseCommitVerification(stepStdout(result, 'log'), stepStdout(result, 'status'), commitPrefix, stage)
 }
@@ -168,10 +167,11 @@ export async function resilientAgent<T = unknown>(
     // have written, so its retry needs no guard; a writer's retry keeps it.
     if (attempt < maxRetries && opts?.worktree && !isReadOnlyAgentType(opts.agentType)) {
       const guardSteps = worktreeDirtySteps(opts.worktree)
-      const guard = worktreeDirtyFromSteps(parseBatchResult(
-        await agentFn(batchCommandPrompt(guardSteps), stageOpts('cli', { label: 'retry-guard', model: 'haiku' })),
-        guardSteps,
-      ))
+      const guard = worktreeDirtyFromSteps(
+        // retry:false: the guard's unknown state aborts the retry below; a
+        // second runner call here would only delay that abort.
+        await runBatch(guardSteps, { ...stageOpts('cli', { label: 'retry-guard', model: 'haiku' }), retry: false }, { agentFn, logFn }),
+      )
       if (!guard.known) {
         logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : 'returned null'} and the worktree state is unknown (${guard.detail}) — aborting retry to prevent duplicate writes`)
         return lastResult
@@ -261,18 +261,26 @@ async function runBatchViaShell(shellFn: ShellFn, steps: BatchStep[]): Promise<B
  */
 export const LARGE_BATCH_BYTES = 8 * 1024
 
-export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: string }, deps?: RunBatchDeps): Promise<BatchResult> {
+export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: string; retryMarker?: string; retry?: boolean }, deps?: RunBatchDeps): Promise<BatchResult> {
   const shellFn = resolveShell(deps)
   if (shellFn) return runBatchViaShell(shellFn, steps)
   const agentFn = deps?.agentFn ?? agent
   const logFn = deps?.logFn ?? log
-  const prompt = batchCommandPrompt(steps)
+  // retryMarker is runBatch's own option (a distinct prompt, so a resumed run
+  // re-asks instead of replaying a cached answer); the runner never sees it as an opt.
+  // retry:false skips the runner-side retries below: a caller with its own
+  // retry loop (resilientAgent's guard) takes the first reply as the answer.
+  const { retryMarker, retry, ...agentOpts } = opts
+  opts = agentOpts
+  const script = batchCommandPrompt(steps)
+  const prompt = retryMarker ? `${script}\n\n${retryMarker}` : script
   const promptBytes = utf8ByteLength(prompt)
   if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model('balanced') && opts.model !== model('deep')) {
     logFn(`[runBatch] ${opts.label || 'batch'}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`)
     opts = { ...opts, model: model('balanced') }
   }
   let result = parseBatchResult(await agentFn(prompt, opts), steps)
+  if (retry === false) return result
   const label = opts.label || 'batch'
   const retryOpts = { ...opts, label: `${label}:retry` }
   // One retry, whatever the runner-side cause. Each is a failure of the

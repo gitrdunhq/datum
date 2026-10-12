@@ -1,7 +1,7 @@
 import { runBatch } from './shared/agents'
 import { renderPrompt, parseAgentJsonStrict } from './shared/utils'
 import { model } from './shared/models'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout } from './shared/batch'
+import { setBatchCacheKey, setBatchRoot, stepStdout } from './shared/batch'
 import { toolchainConventionLines } from './shared/toolchain'
 import { writeFileSteps, writeFileFromSteps, writeFileBlobSha } from './shared/write-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
