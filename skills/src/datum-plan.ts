@@ -3,7 +3,7 @@ import { model, DEFAULT_CONFIG } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
-import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextInlineRetryPrompt, contextFromRelay, mergeRelayRetry, contextSlot, contextWitnessInstruction, contextWitnessWrapInstruction, unwrapWitnessedArray, assertReadWitness, type ContextFile } from './shared/context-relay'
+import { contextProbeSteps, contextRelayPlan, contextInlineSteps, CONTEXT_INLINE_RETRY_MARKER, contextFromRelay, mergeRelayRetry, contextSlot, contextWitnessInstruction, contextWitnessWrapInstruction, unwrapWitnessedArray, assertReadWitness, type ContextFile } from './shared/context-relay'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
 import { planBuildSteps, planBuildFromSteps, tasksJsonBlobSha, skeletonBatchSteps, skeletonBatchFromSteps, renumberDecisionSteps, decideRenumber } from './shared/plan-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
@@ -78,10 +78,7 @@ let ctx = contextFromRelay(readBatch, inlineBatch, relayPlan)
 // mismatches is deferred to the consuming agent, never a halt.
 if (ctx.mismatched.length > 0) {
   log(`read-context: context_relay_mismatch on ${ctx.mismatched.join(', ')} — re-fetching once with a fresh runner`)
-  const retryBatch = parseBatchResult(
-    await agent(contextInlineRetryPrompt(inlineSteps), bootstrapOpts('cli', { label: 'read-context-files:retry', model: model('fast') })),
-    inlineSteps,
-  )
+  const retryBatch = await runBatch(inlineSteps, bootstrapOpts('cli', { label: 'read-context-files:retry', model: model('fast'), retryMarker: CONTEXT_INLINE_RETRY_MARKER }))
   ctx = mergeRelayRetry(ctx, contextFromRelay(readBatch, retryBatch, relayPlan))
 }
 for (const warning of ctx.warnings) log(`read-context: ${warning}`)
@@ -139,10 +136,7 @@ if (contextFilesList.length > 0) {
   let cf = contextFromRelay(cfProbe, cfInline, cfPlan)
   if (cf.mismatched.length > 0) {
     log(`context_files: context_relay_mismatch on ${cf.mismatched.join(', ')} — re-fetching once with a fresh runner`)
-    const cfRetry = parseBatchResult(
-      await agent(contextInlineRetryPrompt(cfInlineSteps), stageOpts('cli', { label: 'read-context-files:retry', model: model('fast') })),
-      cfInlineSteps,
-    )
+    const cfRetry = await runBatch(cfInlineSteps, stageOpts('cli', { label: 'read-context-files:retry', model: model('fast'), retryMarker: CONTEXT_INLINE_RETRY_MARKER }))
     cf = mergeRelayRetry(cf, contextFromRelay(cfProbe, cfRetry, cfPlan))
   }
   for (const warning of cf.warnings) contextFilesWarnings.push(warning)

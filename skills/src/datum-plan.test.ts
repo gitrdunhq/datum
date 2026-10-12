@@ -553,10 +553,35 @@ describe('datum-plan — an empty approaches array halts by name', () => {
 // deferred to the consuming agent, never a halt.
 describe('a mismatched inline relay is re-fetched once, then deferred', () => {
   const src = readFileSync(join(__dirname, 'datum-plan.ts'), 'utf8')
-  it('retries with contextInlineRetryPrompt and merges with mergeRelayRetry', () => {
-    expect(src).toMatch(/contextInlineRetryPrompt\(/)
+  it('retries with runBatch + CONTEXT_INLINE_RETRY_MARKER and merges with mergeRelayRetry', () => {
+    expect(src).not.toMatch(/contextInlineRetryPrompt\(/)
+    expect(src).toMatch(/runBatch\([^\n]*retryMarker: CONTEXT_INLINE_RETRY_MARKER/)
     expect(src).toMatch(/mergeRelayRetry\(/)
     expect(src).toMatch(/context_relay_mismatch on /)
+  })
+
+  it('does not import contextInlineRetryPrompt (AC1)', () => {
+    const importLine = src.split('\n').find((l) => /^import .* from '\.\/shared\/context-relay'/.test(l)) ?? ''
+    expect(importLine).not.toMatch(/contextInlineRetryPrompt/)
+    expect(importLine).toMatch(/CONTEXT_INLINE_RETRY_MARKER/)
+  })
+
+  it('the bootstrap retry site calls runBatch with bootstrapOpts, the retry label, fast model and marker (AC2)', () => {
+    expect(src).toMatch(
+      /await runBatch\(inlineSteps, bootstrapOpts\('cli', \{ label: 'read-context-files:retry', model: model\('fast'\), retryMarker: CONTEXT_INLINE_RETRY_MARKER \}\)\)/,
+    )
+  })
+
+  it('the context_files retry site calls runBatch with stageOpts, the retry label, fast model and marker (AC2)', () => {
+    expect(src).toMatch(
+      /await runBatch\(cfInlineSteps, stageOpts\('cli', \{ label: 'read-context-files:retry', model: model\('fast'\), retryMarker: CONTEXT_INLINE_RETRY_MARKER \}\)\)/,
+    )
+  })
+
+  it('both retry results are still merged with mergeRelayRetry (AC3)', () => {
+    expect(src).toMatch(/ctx = mergeRelayRetry\(ctx, contextFromRelay\(readBatch, retryBatch, relayPlan\)\)/)
+    expect(src).toMatch(/cf = mergeRelayRetry\(cf, contextFromRelay\(cfProbe, cfRetry, cfPlan\)\)/)
+    expect(src.match(/mergeRelayRetry\(/g)?.length).toBe(2)
   })
 })
 
