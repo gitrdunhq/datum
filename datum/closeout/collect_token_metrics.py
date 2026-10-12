@@ -2,7 +2,69 @@
 """Collect token usage metrics from state.json model log."""
 
 import json
+import sys
 from pathlib import Path
+
+
+_TOKEN_FIELDS = ("prompt_tokens", "completion_tokens", "cached_tokens")
+
+
+class MetricsLineError(ValueError):
+    """A metrics.jsonl line that cannot be used; the message names the line."""
+
+
+def _empty_totals() -> dict:
+    return {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0}
+
+
+def _add_call(bucket: dict, entry: dict) -> None:
+    bucket["calls"] += 1
+    for field in _TOKEN_FIELDS:
+        bucket[field] += entry[field]
+
+
+def _parse_metrics_line(line_no: int, raw: str) -> dict:
+    try:
+        entry = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise MetricsLineError(f"metrics.jsonl line {line_no}: invalid JSON ({e.msg})") from e
+    if not isinstance(entry, dict):
+        raise MetricsLineError(f"metrics.jsonl line {line_no}: expected a JSON object")
+    for key in ("label", "agent_type"):
+        if not isinstance(entry.get(key), str):
+            raise MetricsLineError(f"metrics.jsonl line {line_no}: missing string field '{key}'")
+    for key in _TOKEN_FIELDS:
+        value = entry.get(key)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise MetricsLineError(f"metrics.jsonl line {line_no}: missing integer field '{key}'")
+    return entry
+
+
+def aggregate_metrics_jsonl(path: Path) -> tuple[dict, dict, dict]:
+    """Return (per_agent_type, per_stage, cached_share) from a metrics.jsonl file.
+
+    A missing file yields three empty dicts. A malformed line raises
+    MetricsLineError naming the 1-based line number.
+    """
+    per_agent_type: dict[str, dict] = {}
+    per_stage: dict[str, dict] = {}
+    if not path.exists():
+        return {}, {}, {}
+    with path.open(encoding="utf-8") as fh:
+        for line_no, raw in enumerate(fh, start=1):
+            if not raw.strip():
+                continue
+            entry = _parse_metrics_line(line_no, raw)
+            stage = entry["label"].split(":", 1)[0]
+            _add_call(per_agent_type.setdefault(entry["agent_type"], _empty_totals()), entry)
+            _add_call(per_stage.setdefault(stage, _empty_totals()), entry)
+    cached_share = {
+        agent: (
+            round(t["cached_tokens"] / t["prompt_tokens"], 4) if t["prompt_tokens"] > 0 else 0.0
+        )
+        for agent, t in per_agent_type.items()
+    }
+    return per_agent_type, per_stage, cached_share
 
 
 def main() -> None:
@@ -43,6 +105,14 @@ def main() -> None:
                     )
             except sqlite3.OperationalError as e:
                 db_error = f"token_metrics table not found or database error: {e}"
+
+    try:
+        per_agent_type, per_stage, cached_share = aggregate_metrics_jsonl(
+            Path(f".datum/runs/{args.run_id}/metrics.jsonl")
+        )
+    except MetricsLineError as e:
+        print(json.dumps({"ok": False, "code": "invalid_metrics_line", "message": str(e)}), file=sys.stderr)
+        sys.exit(1)
 
     per_phase: dict[str, dict] = {}
     per_model: dict[str, dict] = {}
@@ -92,6 +162,9 @@ def main() -> None:
             "total": None,
             "per_phase": {},
             "per_model": {},
+            "per_agent_type": per_agent_type,
+            "per_stage": per_stage,
+            "cached_share": cached_share,
         }
     else:
         data = {
@@ -101,6 +174,9 @@ def main() -> None:
             "total": total_input + total_output,
             "per_phase": per_phase,
             "per_model": per_model,
+            "per_agent_type": per_agent_type,
+            "per_stage": per_stage,
+            "cached_share": cached_share,
         }
 
     out_path = Path(f".datum/runs/{args.run_id}/closeout-raw/token_metrics.json")
