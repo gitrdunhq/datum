@@ -1947,7 +1947,10 @@ const dagResults: (LaneOutcome | null)[] = await parallel<LaneOutcome>(
         // Fail the lane with the dep_merge_failed prefix triage already knows.
         let depMerge: { ok: boolean; error: string }
         try {
-          depMerge = depMergeFromSteps(await runBatch(depMergeStepList, stageOpts('cli', { label: `dep-merge:${taskId}`, model: 'haiku' })), depBranches)
+          // resilientAgent as the runner (COV-3): a throw or null reply is retried
+          // with backoff, and an unregistered agent type falls back, before the
+          // lane fails. Re-merging an already-merged dependency is a no-op.
+          depMerge = depMergeFromSteps(await runBatch(depMergeStepList, stageOpts('cli', { label: `dep-merge:${taskId}`, model: 'haiku' }), { agentFn: resilientAgent }), depBranches)
         } catch (e) {
           const reason = e instanceof Error ? e.message : String(e)
           depMerge = { ok: false, error: `dep_merge_failed: could not merge [${depBranches.join(', ')}] — runner threw: ${reason}` }

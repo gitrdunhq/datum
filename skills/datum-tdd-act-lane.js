@@ -3050,7 +3050,7 @@ var dagResults = await parallel(
         const depMergeStepList = depMergeSteps(wt, depBranches);
         let depMerge;
         try {
-          depMerge = depMergeFromSteps(await runBatch(depMergeStepList, stageOpts("cli", { label: `dep-merge:${taskId}`, model: "haiku" })), depBranches);
+          depMerge = depMergeFromSteps(await runBatch(depMergeStepList, stageOpts("cli", { label: `dep-merge:${taskId}`, model: "haiku" }), { agentFn: resilientAgent }), depBranches);
         } catch (e) {
           const reason = e instanceof Error ? e.message : String(e);
           depMerge = { ok: false, error: `dep_merge_failed: could not merge [${depBranches.join(", ")}] \u2014 runner threw: ${reason}` };

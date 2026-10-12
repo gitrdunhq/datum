@@ -79,7 +79,10 @@ export function trackedDirtyFiles(result: BatchResult): TrackedDirtyResult {
   return { known: true, files, detail: '' }
 }
 
-const LINT_PATH_RE = /^[A-Za-z0-9_.\-/]+$/
+// A path is one whitespace-free token; anything with whitespace is prose
+// unless it is "path: note". Brackets, @ and + are real path characters
+// (app/[id]/page.tsx, src/@types/x.d.ts); COV-5.
+const LINT_PATH_RE = /^[^\s:`'"]+$/
 
 /**
  * The validate-check agent's lint_fixes, reduced to repo-relative paths.
@@ -89,14 +92,17 @@ const LINT_PATH_RE = /^[A-Za-z0-9_.\-/]+$/
  * and paths with a `..` segment are refused. A real fix the agent failed to
  * list is still caught afterwards by the tracked-dirty check.
  */
-export function lintFixPaths(entries: unknown[]): string[] {
+export function lintFixPaths(entries: unknown[], onDrop?: (entry: string) => void): string[] {
   const out: string[] = []
   for (const e of entries) {
     if (typeof e !== 'string') continue
     const text = e.trim().replace(/^[`'"]+|[`'"]+$/g, '')
     const head = LINT_PATH_RE.test(text) ? text : (/^([^\s:]+):\s/.exec(text)?.[1] ?? '').replace(/^[`'"]+|[`'"]+$/g, '')
-    if (!head || !LINT_PATH_RE.test(head)) continue
-    if (head.startsWith('/') || head.split('/').includes('..')) continue
+    // Absolute, parent-escaping and option-looking (-rf) entries never reach git add.
+    if (!head || !LINT_PATH_RE.test(head) || head.startsWith('/') || head.startsWith('-') || head.split('/').includes('..')) {
+      if (text) onDrop?.(text)
+      continue
+    }
     if (!out.includes(head)) out.push(head)
   }
   return out

@@ -660,15 +660,17 @@ function trackedDirtyFiles(result) {
   const files = (step.stdout || "").split("\n").filter((l) => l.trim().length > 0 && !l.startsWith("??")).map((l) => l.slice(3).trim()).map((path) => path.includes(" -> ") ? path.split(" -> ")[1] : path);
   return { known: true, files, detail: "" };
 }
-var LINT_PATH_RE = /^[A-Za-z0-9_.\-/]+$/;
-function lintFixPaths(entries) {
+var LINT_PATH_RE = /^[^\s:`'"]+$/;
+function lintFixPaths(entries, onDrop) {
   const out = [];
   for (const e of entries) {
     if (typeof e !== "string") continue;
     const text = e.trim().replace(/^[`'"]+|[`'"]+$/g, "");
     const head = LINT_PATH_RE.test(text) ? text : (/^([^\s:]+):\s/.exec(text)?.[1] ?? "").replace(/^[`'"]+|[`'"]+$/g, "");
-    if (!head || !LINT_PATH_RE.test(head)) continue;
-    if (head.startsWith("/") || head.split("/").includes("..")) continue;
+    if (!head || !LINT_PATH_RE.test(head) || head.startsWith("/") || head.startsWith("-") || head.split("/").includes("..")) {
+      if (text) onDrop?.(text);
+      continue;
+    }
     if (!out.includes(head)) out.push(head);
   }
   return out;
@@ -1021,7 +1023,7 @@ ${renderPrompt(validate_check_default, {
   { label: "validate-check", model: model("balanced"), schema: VALIDATE_CHECK_SCHEMA }
 );
 var check = checkResult;
-var lintFixes = lintFixPaths(check?.lint_fixes || []);
+var lintFixes = lintFixPaths(check?.lint_fixes || [], (entry) => log(`lint_fixes entry is not a repo path, not committed: ${entry.slice(0, 200)}`));
 var lintCommitError = "";
 if (mainSync.ok && lintFixes.length > 0) {
   const lintCommitSteps = commitFilesSteps({ wt: ".", files: lintFixes, message: `validate: lint fixes in ${lintFixes.length} file${lintFixes.length === 1 ? "" : "s"}` });

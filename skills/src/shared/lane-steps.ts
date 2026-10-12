@@ -1037,10 +1037,14 @@ export function isDigestRelayError(error: string): boolean {
   return typeof error === 'string' && error.startsWith('lane_plan_digest_mismatch:')
 }
 
-/** Attempt 2's prompt: the same batch plus a suffix, so the Workflow replay
- *  cache cannot serve attempt 1's corrupted reply back. */
+/** The act-start digest retry's suffix, passed to runBatch as retryMarker
+ *  so the Workflow replay cache cannot serve attempt 1's corrupted reply
+ *  back and the runner is told what went wrong (COV-1). */
+export const DIGEST_RETRY_MARKER = "# attempt 2 of 2 — the previous runner changed the digest-cat stdout; return every step's stdout byte for byte, adding, removing and correcting nothing"
+
+/** Attempt 2's prompt: the same batch plus DIGEST_RETRY_MARKER. */
 export function digestRetryPrompt(prompt: string): string {
-  return `${prompt}\n\n# attempt 2 of 2 — the previous runner changed the digest-cat stdout; return every step's stdout byte for byte, adding, removing and correcting nothing`
+  return `${prompt}\n\n${DIGEST_RETRY_MARKER}`
 }
 
 /** The digest's spec_hash for a lane — the marker comparison key. Never computed from a relayed lane. */

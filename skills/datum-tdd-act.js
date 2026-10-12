@@ -709,6 +709,7 @@ function lanePlanDigestFromSteps(result, planPath) {
 function isDigestRelayError(error) {
   return typeof error === "string" && error.startsWith("lane_plan_digest_mismatch:");
 }
+var DIGEST_RETRY_MARKER = "# attempt 2 of 2 \u2014 the previous runner changed the digest-cat stdout; return every step's stdout byte for byte, adding, removing and correcting nothing";
 function digestSpecHash(digest, taskId) {
   const lane = digest.lanes[taskId];
   if (!lane) throw new Error(`lane_plan_digest_unparseable: lane ${taskId} is not in the digest`);
@@ -957,7 +958,7 @@ phase("Topology");
 var firstDigest = lanePlanDigestFromSteps(actStartResult, lanePlanPath);
 if (!firstDigest.ok && isDigestRelayError(firstDigest.error)) {
   log(`[act-start] ${firstDigest.error} \u2014 retrying once with a fresh runner`);
-  actStartResult = await runBatch(actStart, stageOpts("cli", { label: "act-start:retry", phase: "Topology", model: model("fast") }));
+  actStartResult = await runBatch(actStart, stageOpts("cli", { label: "act-start:digest-retry", phase: "Topology", model: model("fast"), retryMarker: DIGEST_RETRY_MARKER }));
 }
 var digestResult = lanePlanDigestFromSteps(actStartResult, lanePlanPath);
 if (!digestResult.ok || !digestResult.digest) throw new Error(digestResult.error);

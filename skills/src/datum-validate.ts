@@ -116,7 +116,7 @@ const check = checkResult as ValidateCheck | null
 // commitFilesSteps (a failed commit is a named halt), then confirm no
 // tracked file is still dirty — a fix the agent applied but did not report
 // would otherwise slip through the same way.
-const lintFixes: string[] = lintFixPaths(check?.lint_fixes || [])
+const lintFixes: string[] = lintFixPaths(check?.lint_fixes || [], (entry) => log(`lint_fixes entry is not a repo path, not committed: ${entry.slice(0, 200)}`))
 let lintCommitError = ''
 if (mainSync.ok && lintFixes.length > 0) {
   const lintCommitSteps = commitFilesSteps({ wt: '.', files: lintFixes, message: `validate: lint fixes in ${lintFixes.length} file${lintFixes.length === 1 ? '' : 's'}` })

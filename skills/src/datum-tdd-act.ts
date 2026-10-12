@@ -3,7 +3,7 @@ import type { LanePlanDigest, LaneOutcome, SetupResult, LaneResult, MergeResult,
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { setBatchCacheKey, setBatchRoot, stepStdout, describeFailure, type BatchResult } from './shared/batch'
-import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps, isDigestRelayError } from './shared/lane-steps'
+import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps, isDigestRelayError, DIGEST_RETRY_MARKER } from './shared/lane-steps'
 import { runBatch } from './shared/agents'
 import { DEFAULT_CONFIG, skillPath } from './shared/models'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
@@ -87,7 +87,7 @@ phase('Topology')
 const firstDigest = lanePlanDigestFromSteps(actStartResult, lanePlanPath)
 if (!firstDigest.ok && isDigestRelayError(firstDigest.error)) {
   log(`[act-start] ${firstDigest.error} — retrying once with a fresh runner`)
-  actStartResult = await runBatch(actStart, stageOpts('cli', { label: 'act-start:retry', phase: 'Topology', model: model('fast') }))
+  actStartResult = await runBatch(actStart, stageOpts('cli', { label: 'act-start:digest-retry', phase: 'Topology', model: model('fast'), retryMarker: DIGEST_RETRY_MARKER }))
 }
 const digestResult = lanePlanDigestFromSteps(actStartResult, lanePlanPath)
 if (!digestResult.ok || !digestResult.digest) throw new Error(digestResult.error)
