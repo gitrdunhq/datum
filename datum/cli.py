@@ -172,6 +172,11 @@ def lane_plan_cmd(
         "--properties",
         help="PROPERTIES.md whose Integration Invariants become task-INT lanes",
     ),
+    renumber: bool = typer.Option(
+        False,
+        "--renumber",
+        help="Rewrite placeholder task-NNN ids to PREFIX-n before building (fresh epics only; ignored with --validate)",
+    ),
 ):
     """Builds lane-plan.json and TASKS.md from tasks.json."""
     import sys
@@ -182,6 +187,8 @@ def lane_plan_cmd(
     args = ["lane_plan.py"]
     if validate:
         args.append("--validate")
+    if renumber:
+        args.append("--renumber")
     args.extend(
         ["--input", input_file, "--output", output_file, "--md-output", md_output]
     )
