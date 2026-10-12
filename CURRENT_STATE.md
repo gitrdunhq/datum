@@ -103,6 +103,7 @@ just an unclear cross-reference worth tidying).
 ## Review Decisions
 
 - ACCEPT f9b971da (CORR-001 skills/src/shared/batch.ts:190): Intentional operator fix outside this epic's runner scope, committed on the epic branch while dogfooding (60ba20a). With agent types off, a generic batch runner declined a step and AUTHORED a row for it (exit_code null, not_run stderr), which parseBatchResult read as a real failure. The authored-row branch routes that to the existing one-retry refusal path, and the prompt sentence tells the runner never to author a row. Both are pinned by tests in batch.test.ts. R1.5's byte-identical prompt rule exists so the runner work does not change the hosted path by accident; this change is deliberate and fixes a hosted-path defect. Reverting it would bring the fabricated-row failure back.
+- ACCEPT 8ed9e6a1 (CORR-001 skills/src/shared/batch.ts:190): Same finding as f9b971da (accepted above), re-keyed because review iteration 3 reworded it. The hosted-path batch prompt sentence, the authored-row branch in parseBatchResult and the REFUSAL_RE widening are one deliberate operator fix from 60ba20a for a defect found while dogfooding (a runner that declines a step and writes a fabricated not_run row). batch.test.ts pins the new prompt sentence and both parse outcomes. Kept, not reverted: reverting reintroduces the fabricated-row failure on the hosted path.
 <!-- review-decisions:end -->
 
 `brief_defects`: none reported (empty array). `platform`/`lane_tools`: not
