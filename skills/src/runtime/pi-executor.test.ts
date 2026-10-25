@@ -69,6 +69,15 @@ function fixture(script: Script = {}): Fixture {
   const worktree = join(base, 'wt')
   const scriptDir = join(base, 'script')
   for (const d of [repoRoot, worktree, scriptDir]) mkdirSync(d, { recursive: true })
+  // Writer stages fail closed without a lane context (LLM-318); laneCtxCmd shape.
+  // The repo root doubles as the worktree when a call names none.
+  for (const root of [worktree, repoRoot]) {
+    mkdirSync(join(root, '.datum'), { recursive: true })
+    writeFileSync(
+      join(root, '.datum', 'lane-context.json'),
+      JSON.stringify({ task_id: 't-1', stage: 'RED', allowed_write_files: [], forbidden_write_files: [], commit_prefix: 'test(a)', test_count_floor: 0 }),
+    )
+  }
   const scriptPath = join(scriptDir, 'stage.sh')
   writeFileSync(scriptPath, SCRIPT)
   if (script.exit !== undefined) writeFileSync(join(scriptDir, 'exit'), String(script.exit))

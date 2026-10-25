@@ -1,6 +1,6 @@
 // @generated — DO NOT EDIT. Source: skills/src/runtime/runner.ts
 // skills/src/runtime/runner.ts
-import { existsSync, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
 import { join as join3, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -290,7 +290,7 @@ var FakeExecutor = class {
 
 // skills/src/runtime/pi-executor.ts
 import { spawn } from "node:child_process";
-import { mkdirSync as mkdirSync2, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync as mkdirSync2, readFileSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join as join2 } from "node:path";
 
 // skills/src/shared/agent-types.ts
@@ -401,6 +401,24 @@ function runScript(script, worktree, stageJson, hardKillMs) {
     child.on("close", (code, signal) => finish({ code, signal }));
   });
 }
+function isStringArray(v) {
+  return Array.isArray(v) && v.every((x) => typeof x === "string");
+}
+function buildLaneGuard(agentType, worktree, fail) {
+  if (isReadOnlyAgentType(agentType)) return { allowed_write_files: [], forbidden_write_files: [], read_only: true };
+  const ctxFile = join2(worktree, ".datum", "lane-context.json");
+  if (!existsSync(ctxFile)) throw fail("stage_guard_context_missing");
+  let raw;
+  try {
+    raw = JSON.parse(readFileSync(ctxFile, "utf8"));
+  } catch (err) {
+    throw fail("stage_guard_context_invalid", `cannot read lane-context.json: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!isRecord2(raw) || !isStringArray(raw.allowed_write_files) || !isStringArray(raw.forbidden_write_files)) {
+    throw fail("stage_guard_context_invalid", "lane-context.json needs string arrays allowed_write_files and forbidden_write_files");
+  }
+  return { allowed_write_files: raw.allowed_write_files, forbidden_write_files: raw.forbidden_write_files, read_only: false };
+}
 var PiExecutor = class {
   constructor(runtime, ctx) {
     this.runtime = runtime;
@@ -441,6 +459,9 @@ var PiExecutor = class {
         worktree
       })
     );
+    const guard = buildLaneGuard(req.opts.agentType, worktree, fail);
+    mkdirSync2(join2(worktree, ".datum"), { recursive: true });
+    writeFileSync(join2(worktree, ".datum", "lane-guard.json"), JSON.stringify(guard));
     const result = await runScript(script, worktree, stageJson, (timeoutS + HARD_KILL_GRACE_S) * 1e3);
     if (result.spawnError !== void 0) throw fail("stage_failed", `spawn error: ${result.spawnError.message}`);
     if (result.hardKilled) throw fail("stage_timeout", `process group killed after ${timeoutS + HARD_KILL_GRACE_S}s`);
@@ -697,7 +718,7 @@ async function runBundle(opts) {
     if (path === void 0) {
       const name = ref.name ?? "";
       if (!WORKFLOW_NAME_RE.test(name)) throw new Error(`workflow_name_invalid: ${JSON.stringify(name)} is not a bare bundle name`);
-      path = opts.skillsDirs.map((dir) => join3(dir, `${name}.js`)).find((candidate) => existsSync(candidate));
+      path = opts.skillsDirs.map((dir) => join3(dir, `${name}.js`)).find((candidate) => existsSync2(candidate));
       if (path === void 0) {
         throw new Error(`workflow_not_found: ${name} (searched: ${opts.skillsDirs.join(", ")})`);
       }
