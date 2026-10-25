@@ -42,6 +42,8 @@ export interface RunBundleOptions {
    *  that value, or as the default haiku/sonnet/opus, and is mapped back to
    *  the runtime id of the same tier (ARCH-001). */
   bundleTiers?: Partial<Record<ModelTier, string>>
+  /** The run id the executor already uses; defaults to resolveRunId(args). */
+  runId?: string
 }
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
@@ -78,7 +80,7 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
   const { bundlePath, args, executor, shell, log, runtime } = opts
   const rootSource = stripMetaExport(readFileSync(bundlePath, 'utf8'))
   setModelTiers(runtime.models)
-  const runId = resolveRunId(args, currentTime())
+  const runId = opts.runId ?? resolveRunId(args, currentTime())
 
   let spentTokens = 0
   const addUsage = (u: StageUsage | undefined): void => {
@@ -303,16 +305,19 @@ export async function main(argv: readonly string[], io: MainIo): Promise<number>
     const args: unknown = JSON.parse(readFileSync(flags['--args'][0], 'utf8'))
     const config = JSON.parse(readFileSync(flags['--config'][0], 'utf8')) as Record<string, unknown>
     const runtime = readRuntimeConfig(config)
+    const repoRoot = flags['--repo-root'][0]
+    const runId = resolveRunId(args, currentTime())
     const bundleTiers = typeof config.models === 'object' && config.models !== null ? (config.models as Partial<Record<ModelTier, string>>) : {}
     const result = await runBundle({
+      runId,
       bundlePath: flags['--bundle'][0],
       args,
-      executor: selectExecutor(runtime),
+      executor: selectExecutor(runtime, { repoRoot, runId }),
       shell: nodeShell,
       skillsDirs: flags['--skills-dir'],
       log: (line) => io.stderr(`${line}\n`),
       runtime,
-      repoRoot: flags['--repo-root'][0],
+      repoRoot,
       bundleTiers,
     })
     io.stdout(`${JSON.stringify(result ?? null)}\n`)

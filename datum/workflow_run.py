@@ -55,6 +55,10 @@ def _check_runtime(config: object) -> None:
         raise UsageError(f"runtime_kind_unknown: {kind}")
     if kind in UNAVAILABLE_KINDS:
         raise UsageError(f"runtime_kind_unavailable: {kind}")
+    if kind == "pi":
+        script = block.get("stage_script")
+        if not isinstance(script, str) or not script:
+            raise UsageError("runtime_stage_script_missing")
 
 
 def _find_bundle(name: str, dirs: list[Path]) -> Path:

@@ -104,7 +104,16 @@ export interface RuntimeConfig {
   concurrency: Record<string, number>
   priority: RuntimePriority
   client: string
+  /** The pi fields below are present exactly when kind is 'pi' (LLM-363). */
+  /** Absolute path of the pi stage script. */
+  stageScript?: string
+  /** Seconds a pi stage may run before the script's own timeout (default 900). */
+  stageTimeoutS?: number
+  /** Parsed only; read by LLM-320/321 (default false). */
+  commitsExternal?: boolean
 }
+
+export const DEFAULT_STAGE_TIMEOUT_S = 900
 
 // One list for both sides (ARCH-005): datum/workflow_run.py reads the same file.
 const RUNTIME_KINDS: readonly string[] = runtimeKinds.kinds
@@ -149,7 +158,19 @@ export function readRuntimeConfig(parsedConfig: Record<string, unknown> | null |
   const priority: RuntimePriority = block.priority === 'interactive' ? 'interactive' : 'batch'
   const client = typeof block.client === 'string' && block.client !== '' ? block.client : 'datum'
 
-  return { kind: kind as RuntimeKind, models, concurrency, priority, client }
+  const base = { kind: kind as RuntimeKind, models, concurrency, priority, client }
+  if (kind !== 'pi') return base
+
+  if (typeof block.stage_script !== 'string' || block.stage_script === '') throw new Error('runtime_stage_script_missing')
+
+  let stageTimeoutS = DEFAULT_STAGE_TIMEOUT_S
+  if (block.stage_timeout_s !== undefined) {
+    const t = block.stage_timeout_s
+    if (typeof t !== 'number' || !Number.isInteger(t) || t <= 0) throw new Error('runtime_stage_timeout_invalid')
+    stageTimeoutS = t
+  }
+
+  return { ...base, stageScript: block.stage_script, stageTimeoutS, commitsExternal: block.commits_external === true }
 }
 
 export function concurrencyFor(rc: RuntimeConfig, modelId: string): number {

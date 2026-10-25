@@ -1,13 +1,13 @@
 // @generated — DO NOT EDIT. Source: skills/src/runtime/runner.ts
 // skills/src/runtime/runner.ts
-import { existsSync, readFileSync } from "node:fs";
-import { join as join2, resolve } from "node:path";
+import { existsSync, readFileSync as readFileSync2 } from "node:fs";
+import { join as join3, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 // assets/runtime-kinds.json
 var runtime_kinds_default = {
   kinds: ["fake", "pi"],
-  unavailable: ["pi"]
+  unavailable: []
 };
 
 // skills/src/shared/models.ts
@@ -20,6 +20,7 @@ var activeTiers = { ...DEFAULT_TIERS };
 function setModelTiers(tiers) {
   activeTiers = { ...DEFAULT_TIERS, ...tiers };
 }
+var DEFAULT_STAGE_TIMEOUT_S = 900;
 var RUNTIME_KINDS = runtime_kinds_default.kinds;
 var RUNTIME_TIERS = ["fast", "balanced", "deep"];
 function isRecord(v) {
@@ -50,7 +51,16 @@ function readRuntimeConfig(parsedConfig) {
   }
   const priority = block.priority === "interactive" ? "interactive" : "batch";
   const client = typeof block.client === "string" && block.client !== "" ? block.client : "datum";
-  return { kind, models, concurrency, priority, client };
+  const base = { kind, models, concurrency, priority, client };
+  if (kind !== "pi") return base;
+  if (typeof block.stage_script !== "string" || block.stage_script === "") throw new Error("runtime_stage_script_missing");
+  let stageTimeoutS = DEFAULT_STAGE_TIMEOUT_S;
+  if (block.stage_timeout_s !== void 0) {
+    const t = block.stage_timeout_s;
+    if (typeof t !== "number" || !Number.isInteger(t) || t <= 0) throw new Error("runtime_stage_timeout_invalid");
+    stageTimeoutS = t;
+  }
+  return { ...base, stageScript: block.stage_script, stageTimeoutS, commitsExternal: block.commits_external === true };
 }
 
 // skills/src/shared/utils.ts
@@ -278,21 +288,204 @@ var FakeExecutor = class {
   }
 };
 
+// skills/src/runtime/pi-executor.ts
+import { spawn } from "node:child_process";
+import { mkdirSync as mkdirSync2, readFileSync, statSync, writeFileSync } from "node:fs";
+import { isAbsolute, join as join2 } from "node:path";
+
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  // #341 task-001: a structural lane's single writing stage. Not
+  // datum-refactor — that definition says "clean up without changing
+  // behaviour" and its pre-check answered "nothing to improve" on a file
+  // that did not exist yet, so docs-only lanes completed with no commit.
+  structural: "datum-structural",
+  skeptic: "datum-skeptic",
+  // #375: the Review lenses. Not datum-skeptic — that definition's body is
+  // the lane panel's (read .datum/lane-spec.json, emit a read_witness, answer
+  // PASS/FRAGILE/BROKEN), while a lens reads the epic diff and answers with a
+  // findings array. Same read-only shape, plus a Bash matcher: the lens that
+  // broke a run did it with `git checkout`, which Edit|Write cannot see.
+  review: "datum-reviewer",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  // Read-only LLM *judges* (refactor pre-check, docs-staleness check). They
+  // are not datum-reader: that definition says "read one file, return its
+  // contents, do not interpret" at maxTurns 4, and these calls read every
+  // file a lane touched and answer a rubric.
+  quality: "datum-quality-reader",
+  cli: "datum-cli"
+};
+var READ_ONLY_STAGES = ["skeptic", "review", "reflect", "reader", "quality", "cli"];
+var READ_ONLY_AGENT_TYPES = new Set(READ_ONLY_STAGES.map((s) => AGENT_TYPE_TABLE[s]));
+function isReadOnlyAgentType(agentType) {
+  return typeof agentType === "string" && READ_ONLY_AGENT_TYPES.has(agentType);
+}
+
+// skills/src/runtime/pi-executor.ts
+var CONTAINER_WORKTREE = "/work";
+var HARD_KILL_GRACE_S = 60;
+var STDERR_TAIL_CHARS = 2048;
+function sanitizeLabel(label) {
+  const cleaned = label.replace(/[^A-Za-z0-9._-]/g, "_");
+  return cleaned === "" ? "unlabeled" : cleaned;
+}
+function roleOf(agentType) {
+  if (agentType === void 0 || !agentType.startsWith("datum-") || agentType.length === "datum-".length) return void 0;
+  return agentType.slice("datum-".length);
+}
+function rewritePrompt(prompt, worktree) {
+  return prompt.split(worktree).join(CONTAINER_WORKTREE);
+}
+function exitErrorCode(code) {
+  if (code === 2) return "stage_usage_error";
+  if (code === 3) return "stage_guard_blocked";
+  if (code === 4) return "stage_timeout";
+  return void 0;
+}
+function isNum(v) {
+  return typeof v === "number" && Number.isFinite(v);
+}
+function isRecord2(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function parseReply(raw) {
+  if (!isRecord2(raw)) return { why: "reply.json is not an object" };
+  if (typeof raw.text !== "string") return { why: "text is not a string" };
+  const reply = { text: raw.text };
+  if (raw.usage !== void 0) {
+    const u = raw.usage;
+    if (!isRecord2(u) || !isNum(u.prompt_tokens) || !isNum(u.completion_tokens) || !isNum(u.cached_tokens)) {
+      return { why: "usage needs numeric prompt_tokens, completion_tokens, cached_tokens" };
+    }
+    const usage = { prompt_tokens: u.prompt_tokens, completion_tokens: u.completion_tokens, cached_tokens: u.cached_tokens };
+    reply.usage = usage;
+  }
+  if (raw.timings !== void 0) {
+    const t = raw.timings;
+    if (!isRecord2(t) || !isNum(t.prefill_ms) || !isNum(t.decode_ms)) return { why: "timings needs numeric prefill_ms, decode_ms" };
+    const timings = { prefill_ms: t.prefill_ms, decode_ms: t.decode_ms };
+    reply.timings = timings;
+  }
+  return { reply };
+}
+function runScript(script, worktree, stageJson, hardKillMs) {
+  return new Promise((resolve2) => {
+    const child = spawn("bash", [script, worktree, stageJson], { stdio: ["ignore", "ignore", "pipe"], detached: true });
+    let tail = "";
+    let hardKilled = false;
+    let done = false;
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      tail = (tail + chunk).slice(-STDERR_TAIL_CHARS);
+    });
+    const timer = setTimeout(() => {
+      hardKilled = true;
+      try {
+        if (child.pid !== void 0) process.kill(-child.pid, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
+    }, hardKillMs);
+    const finish = (r) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve2({ ...r, stderrTail: tail, hardKilled });
+    };
+    child.on("error", (err) => finish({ code: null, signal: null, spawnError: err }));
+    child.on("close", (code, signal) => finish({ code, signal }));
+  });
+}
+var PiExecutor = class {
+  constructor(runtime, ctx) {
+    this.runtime = runtime;
+    this.ctx = ctx;
+  }
+  runtime;
+  ctx;
+  counter = 0;
+  async execute(req) {
+    const label = req.opts.label ?? "";
+    const role = roleOf(req.opts.agentType);
+    if (role === void 0) throw new Error(`stage_role_missing: ${label}: agentType ${JSON.stringify(req.opts.agentType)} is not a datum- agent type`);
+    const worktree = req.opts.worktree ?? this.ctx.repoRoot;
+    if (!isAbsolute(worktree) || !isDirectory(worktree)) {
+      throw new Error(`stage_worktree_missing: ${label}: ${worktree} is not an existing absolute directory`);
+    }
+    const { stageScript: script, stageTimeoutS: timeoutS } = this.runtime;
+    if (script === void 0 || timeoutS === void 0) throw new Error(`runtime_stage_script_missing: ${label}`);
+    this.counter += 1;
+    const dir = join2(this.ctx.repoRoot, ".datum", "runs", this.ctx.runId, "stages", `${this.counter}-${sanitizeLabel(label)}`);
+    const fail = (code, detail) => new Error(`${code}: ${label} (${dir})${detail === void 0 ? "" : `: ${detail}`}`);
+    mkdirSync2(dir, { recursive: true, mode: 448 });
+    const promptFile = join2(dir, "prompt.md");
+    const replyFile = join2(dir, "reply.json");
+    const stageJson = join2(dir, "stage.json");
+    writeFileSync(promptFile, rewritePrompt(req.prompt, worktree));
+    writeFileSync(
+      stageJson,
+      JSON.stringify({
+        model: req.model,
+        role,
+        read_only: isReadOnlyAgentType(req.opts.agentType),
+        prompt_file: promptFile,
+        reply_file: replyFile,
+        timeout_s: timeoutS,
+        headers: req.headers,
+        label,
+        worktree
+      })
+    );
+    const result = await runScript(script, worktree, stageJson, (timeoutS + HARD_KILL_GRACE_S) * 1e3);
+    if (result.spawnError !== void 0) throw fail("stage_failed", `spawn error: ${result.spawnError.message}`);
+    if (result.hardKilled) throw fail("stage_timeout", `process group killed after ${timeoutS + HARD_KILL_GRACE_S}s`);
+    if (result.code === null) throw fail("stage_failed", `killed by signal ${result.signal ?? "unknown"}
+${result.stderrTail}`);
+    if (result.code !== 0) {
+      const named = exitErrorCode(result.code);
+      if (named !== void 0) throw fail(named);
+      throw fail(`stage_failed: exit ${result.code}`, result.stderrTail);
+    }
+    let raw;
+    try {
+      raw = JSON.parse(readFileSync(replyFile, "utf8"));
+    } catch (err) {
+      throw fail("stage_reply_invalid", `cannot read reply.json: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const parsed = parseReply(raw);
+    if ("why" in parsed) throw fail("stage_reply_invalid", parsed.why);
+    return parsed.reply;
+  }
+};
+function isDirectory(path) {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 // skills/src/runtime/executors.ts
-function selectExecutor(runtime) {
+function selectExecutor(runtime, ctx) {
   if (runtime.kind === "fake") return new FakeExecutor([], { text: "{}" });
+  if (runtime.kind === "pi") return new PiExecutor(runtime, ctx);
   throw new Error(`runtime_kind_unsupported: ${runtime.kind}`);
 }
 
 // skills/src/runtime/shell.ts
-import { spawn } from "node:child_process";
+import { spawn as spawn2 } from "node:child_process";
 var DEFAULT_MAX_STDOUT_CHARS = 16 * 1024 * 1024;
 var DEFAULT_MAX_STDERR_CHARS = 64 * 1024;
 function createNodeShell(limits = {}) {
   const maxStdout = limits.maxStdoutChars ?? DEFAULT_MAX_STDOUT_CHARS;
   const maxStderr = limits.maxStderrChars ?? DEFAULT_MAX_STDERR_CHARS;
   return (script, opts) => new Promise((resolve2, reject) => {
-    const child = spawn("bash", ["-c", script], {
+    const child = spawn2("bash", ["-c", script], {
       cwd: opts.cwd,
       stdio: ["ignore", "pipe", "pipe"],
       detached: true
@@ -379,9 +572,9 @@ function resolveModel(runtime, requested, bundleTiers = {}) {
 }
 async function runBundle(opts) {
   const { bundlePath, args, executor, shell, log, runtime } = opts;
-  const rootSource = stripMetaExport(readFileSync(bundlePath, "utf8"));
+  const rootSource = stripMetaExport(readFileSync2(bundlePath, "utf8"));
   setModelTiers(runtime.models);
-  const runId = resolveRunId(args, currentTime());
+  const runId = opts.runId ?? resolveRunId(args, currentTime());
   let spentTokens = 0;
   const addUsage = (u) => {
     if (u) spentTokens += u.prompt_tokens + u.completion_tokens;
@@ -504,12 +697,12 @@ async function runBundle(opts) {
     if (path === void 0) {
       const name = ref.name ?? "";
       if (!WORKFLOW_NAME_RE.test(name)) throw new Error(`workflow_name_invalid: ${JSON.stringify(name)} is not a bare bundle name`);
-      path = opts.skillsDirs.map((dir) => join2(dir, `${name}.js`)).find((candidate) => existsSync(candidate));
+      path = opts.skillsDirs.map((dir) => join3(dir, `${name}.js`)).find((candidate) => existsSync(candidate));
       if (path === void 0) {
         throw new Error(`workflow_not_found: ${name} (searched: ${opts.skillsDirs.join(", ")})`);
       }
     }
-    return execute(stripMetaExport(readFileSync(path, "utf8")), childArgs);
+    return execute(stripMetaExport(readFileSync2(path, "utf8")), childArgs);
   };
   const g = globalThis;
   const keys = ["datumRuntime", "shell", "args"];
@@ -544,20 +737,23 @@ function parseMainArgv(argv) {
 async function main(argv, io) {
   try {
     const flags = parseMainArgv(argv);
-    const args = JSON.parse(readFileSync(flags["--args"][0], "utf8"));
-    const config = JSON.parse(readFileSync(flags["--config"][0], "utf8"));
+    const args = JSON.parse(readFileSync2(flags["--args"][0], "utf8"));
+    const config = JSON.parse(readFileSync2(flags["--config"][0], "utf8"));
     const runtime = readRuntimeConfig(config);
+    const repoRoot = flags["--repo-root"][0];
+    const runId = resolveRunId(args, currentTime());
     const bundleTiers = typeof config.models === "object" && config.models !== null ? config.models : {};
     const result = await runBundle({
+      runId,
       bundlePath: flags["--bundle"][0],
       args,
-      executor: selectExecutor(runtime),
+      executor: selectExecutor(runtime, { repoRoot, runId }),
       shell: nodeShell,
       skillsDirs: flags["--skills-dir"],
       log: (line) => io.stderr(`${line}
 `),
       runtime,
-      repoRoot: flags["--repo-root"][0],
+      repoRoot,
       bundleTiers
     });
     io.stdout(`${JSON.stringify(result ?? null)}
