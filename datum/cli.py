@@ -640,6 +640,11 @@ def init(
             "Off by default."
         ),
     ),
+    runtime: str = typer.Option(
+        None,
+        "--runtime",
+        help="Target runtime. 'pi' also writes .datum/roles/<kind>.md role files.",
+    ),
 ):
     """Bootstrap the repository for DATUM execution.
 
@@ -664,6 +669,12 @@ def init(
     package_root = Path(__file__).resolve().parent.parent
     package_skills = package_root / "skills"
     config_path = Path(".datum/config.json")
+
+    if runtime == "pi":
+        from datum.agents_materialize import materialize_pi_roles
+
+        with _quiet_stdout_ctx(json_output):
+            materialize_pi_roles(package_root / "agents", Path(".datum/roles"))
 
     if refresh:
         existing = json.loads(config_path.read_text()) if config_path.exists() else {}

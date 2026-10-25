@@ -293,3 +293,51 @@ def install_agent_types(
     except Exception as exc:  # noqa: BLE001
         result.errors.append(f"agents: {exc}")
     return result
+
+
+# --- pi role files (LLM-318) -------------------------------------------------
+
+PI_WRITER_KINDS = ("red", "green", "refactor", "structural", "docs")
+PI_NO_COMMIT_NOTE = "do not commit; the runner commits what you wrote."
+_PI_COMMIT_STEP = re.compile(r"^(\d+)\. (?:Commit with the exact|Do not run git\.).*$")
+_PI_HOOK_LINE = re.compile(r"hooks?\b|PreToolUse", re.IGNORECASE)
+
+
+def render_pi_role(text: str, kind: str) -> str:
+    """Pure transform of ``agents/datum-<kind>.md`` into a pi role file.
+
+    Drops the YAML frontmatter and every line about hooks, and in writer roles
+    swaps the commit step for a no-commit note and drops commit_prefix. The
+    output depends only on ``text`` and ``kind``: no date, run id or path.
+    """
+    lines = text.split("\n")
+    if lines and lines[0] == "---":
+        end = next((i for i in range(1, len(lines)) if lines[i] == "---"), None)
+        if end is None:
+            raise ValueError(f"datum-{kind}: frontmatter is not closed")
+        lines = lines[end + 1 :]
+    writer = kind in PI_WRITER_KINDS
+    out: list[str] = []
+    for line in lines:
+        if _PI_HOOK_LINE.search(line):
+            continue
+        if writer:
+            if line.startswith("- commit_prefix"):
+                continue
+            step = _PI_COMMIT_STEP.match(line)
+            if step:
+                line = f"{step.group(1)}. {PI_NO_COMMIT_NOTE}"
+            line = line.replace(" and never `git commit --amend`", "")
+        out.append(line)
+    return "\n".join(out).lstrip("\n")
+
+
+def materialize_pi_roles(source_agents: Path, dest: Path) -> list[str]:
+    """Write ``dest/<kind>.md`` for every ``datum-<kind>.md``; returns the kinds."""
+    dest.mkdir(parents=True, exist_ok=True)
+    kinds: list[str] = []
+    for src in sorted(Path(source_agents).glob("datum-*.md")):
+        kind = src.stem.removeprefix("datum-")
+        (dest / f"{kind}.md").write_text(render_pi_role(src.read_text(), kind))
+        kinds.append(kind)
+    return kinds

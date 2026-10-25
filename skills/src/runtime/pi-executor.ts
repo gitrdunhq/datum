@@ -4,7 +4,7 @@
 // the runner owns the one-tier-up retry and the per-model semaphores.
 
 import { spawn } from 'node:child_process'
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import type { StageExecutor, StageReply, StageRequest, StageTimings, StageUsage } from './executor'
 import type { RuntimeConfig } from '../shared/models'
@@ -110,6 +110,33 @@ function runScript(script: string, worktree: string, stageJson: string, hardKill
   })
 }
 
+interface LaneGuard {
+  allowed_write_files: string[]
+  forbidden_write_files: string[]
+  read_only: boolean
+}
+
+function isStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string')
+}
+
+/** The guard for one stage: empty and read-only for judges, else the lists from lane-context.json. */
+function buildLaneGuard(agentType: string | undefined, worktree: string, fail: (code: string, detail?: string) => Error): LaneGuard {
+  if (isReadOnlyAgentType(agentType)) return { allowed_write_files: [], forbidden_write_files: [], read_only: true }
+  const ctxFile = join(worktree, '.datum', 'lane-context.json')
+  if (!existsSync(ctxFile)) throw fail('stage_guard_context_missing')
+  let raw: unknown
+  try {
+    raw = JSON.parse(readFileSync(ctxFile, 'utf8'))
+  } catch (err) {
+    throw fail('stage_guard_context_invalid', `cannot read lane-context.json: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  if (!isRecord(raw) || !isStringArray(raw.allowed_write_files) || !isStringArray(raw.forbidden_write_files)) {
+    throw fail('stage_guard_context_invalid', 'lane-context.json needs string arrays allowed_write_files and forbidden_write_files')
+  }
+  return { allowed_write_files: raw.allowed_write_files, forbidden_write_files: raw.forbidden_write_files, read_only: false }
+}
+
 export class PiExecutor implements StageExecutor {
   private counter = 0
 
@@ -152,6 +179,10 @@ export class PiExecutor implements StageExecutor {
         worktree,
       }),
     )
+
+    const guard = buildLaneGuard(req.opts.agentType, worktree, fail)
+    mkdirSync(join(worktree, '.datum'), { recursive: true })
+    writeFileSync(join(worktree, '.datum', 'lane-guard.json'), JSON.stringify(guard))
 
     const result = await runScript(script, worktree, stageJson, (timeoutS + HARD_KILL_GRACE_S) * 1000)
     if (result.spawnError !== undefined) throw fail('stage_failed', `spawn error: ${result.spawnError.message}`)
