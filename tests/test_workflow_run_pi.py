@@ -86,6 +86,19 @@ def test_real_runner_runs_a_pi_stage_through_the_fixture_script(tmp_path, monkey
     (tmp_path / "pkg-skills").mkdir()
     wt = tmp_path / "wt"
     wt.mkdir()
+    (wt / ".datum").mkdir()
+    (wt / ".datum" / "lane-context.json").write_text(
+        json.dumps(
+            {
+                "task_id": "t-1",
+                "stage": "RED",
+                "allowed_write_files": [],
+                "forbidden_write_files": [],
+                "commit_prefix": "test(a)",
+                "test_count_floor": 0,
+            }
+        )
+    )
     (tmp_path / ".datum" / "skills" / "fixture.js").write_text(
         f'return await agent("hello", {{ label: "red-1", agentType: "datum-red", worktree: {json.dumps(str(wt))} }})\n'
     )
