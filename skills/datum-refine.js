@@ -83,7 +83,7 @@ function renderPrompt(template, vars) {
 // assets/runtime-kinds.json
 var runtime_kinds_default = {
   kinds: ["fake", "pi"],
-  unavailable: ["pi"]
+  unavailable: []
 };
 
 // skills/src/shared/models.ts
