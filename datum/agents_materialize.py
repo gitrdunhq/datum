@@ -319,6 +319,10 @@ def render_pi_role(text: str, kind: str) -> str:
     writer = kind in PI_WRITER_KINDS
     out: list[str] = []
     for line in lines:
+        line = line.replace(
+            "and the PreToolUse hook rejects any Bash command that mutates the checkout",
+            "and any Bash command that mutates the checkout is blocked",
+        )
         if _PI_HOOK_LINE.search(line):
             continue
         if writer:
