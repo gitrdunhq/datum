@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$REPO_ROOT/.temp/ts-test"
 
 mkdir -p "$OUT_DIR"
-npx esbuild "$REPO_ROOT/skills/src/shared/utils.ts" \
+pnpm exec esbuild "$REPO_ROOT/skills/src/shared/utils.ts" \
   --bundle \
   --format=esm \
   --outfile="$OUT_DIR/utils.mjs" \
