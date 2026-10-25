@@ -32,10 +32,10 @@ Review: all 22 findings of the epic review have a recorded decision in `docs/epi
 ```bash
 git clone git@github.com:gitrdunhq/datum.git && cd datum
 uv sync --extra rag                # the rag extra is imported by the test suite
-npm ci                             # Node >= 22; .nvmrc pins 24
+pnpm install --frozen-lockfile                           # Node >= 22; .nvmrc pins 24
 uv run datum init                  # writes .datum/config.json, agents, hooks
 uv run datum permissions-snippet   # merge the output into .claude/settings.local.json BEFORE starting a Claude Code session
-npx gitnexus analyze               # CLAUDE.md expects the GitNexus index
+pnpm dlx gitnexus analyze              # CLAUDE.md expects the GitNexus index
 ```
 
 Add to `.datum/config.json` (gitignored, local):
@@ -53,7 +53,7 @@ Add to `.datum/config.json` (gitignored, local):
 ### 3.2 Every change
 
 - Edit TypeScript in `skills/src/`, never `skills/*.js` (they carry `// @generated`). Rebuild: `bash scripts/build-workflows.sh` (about 15 s; verifies outputs).
-- Checks before a push: `uv run pytest -q` (about 3 min), `npx vitest run`, `npx tsc -p skills/tsconfig.json`, `uv run ruff check <changed files>` and `uv run ruff format --check <changed files>`. Run ruff format on the files you touched only; the repo is not fully formatted and a whole-file reformat buries the diff.
+- Checks before a push: `uv run pytest -q` (about 3 min), `pnpm exec vitest run`, `pnpm exec tsc -p skills/tsconfig.json`, `uv run ruff check <changed files>` and `uv run ruff format --check <changed files>`. Run ruff format on the files you touched only; the repo is not fully formatted and a whole-file reformat buries the diff.
 - Test first. Source-pin tests (tests that read a `.ts` file and assert on its text) exist all over `skills/src/*.test.ts`; `datum lane-plan` now lists them per lane as `source_pins`. Update a pin in the same change that moves the text it pins.
 - Commit subjects are conventional (`type(scope): subject`).
 
@@ -80,7 +80,7 @@ echo '{ "runId": "local-1", "repoRoot": "'"$PWD"'" }' > .temp-args.json
 uv run datum workflow run <bundle-name> --args .temp-args.json [--config .datum/config.json]
 ```
 
-The bundle is found by name in `.datum/skills/` first, then the configured skills dir. With `kind: "fake"` every model call returns `{}`, so a real phase bundle runs its shell batches for real (a `datum-validate` run executes the test suite) and then stops on empty model replies; it exercises orchestration, shell batches and metrics only. The smallest end-to-end examples are the runner tests, which drive `skills/src/runtime/fixtures/fixture-go.js` and `fixture-child.js` (`npx vitest run skills/src/runtime`). Exit codes: 0 ok, 1 runner failed (stderr has the error), 2 usage error (nothing spawned).
+The bundle is found by name in `.datum/skills/` first, then the configured skills dir. With `kind: "fake"` every model call returns `{}`, so a real phase bundle runs its shell batches for real (a `datum-validate` run executes the test suite) and then stops on empty model replies; it exercises orchestration, shell batches and metrics only. The smallest end-to-end examples are the runner tests, which drive `skills/src/runtime/fixtures/fixture-go.js` and `fixture-child.js` (`pnpm exec vitest run skills/src/runtime`). Exit codes: 0 ok, 1 runner failed (stderr has the error), 2 usage error (nothing spawned).
 
 ## 4. Known gaps carried out of this epic
 

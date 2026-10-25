@@ -13,7 +13,7 @@ if sed --version >/dev/null 2>&1; then SED_INPLACE=(sed -i); else SED_INPLACE=(s
 
 # ── Type check ──
 echo "==> Type checking..."
-npx tsc -p "$SKILLS_DIR/tsconfig.json"
+pnpm exec tsc -p "$SKILLS_DIR/tsconfig.json"
 echo "    tsc: OK"
 
 if [ "$MODE" = "--check" ]; then
@@ -29,7 +29,7 @@ for entry in $ENTRY_POINTS; do
   basename=$(basename "$entry" .ts)
   outfile="$OUT_DIR/${basename}.js"
 
-  npx esbuild "$entry" \
+  pnpm exec esbuild "$entry" \
     --bundle \
     --format=esm \
     --loader:.md=text \
@@ -77,7 +77,7 @@ RUNNER_ENTRY="$SRC_DIR/runtime/runner.ts"
 RUNNER_OUT="$OUT_DIR/runtime/runner.js"
 mkdir -p "$OUT_DIR/runtime"
 runner_tmp=$(mktemp)
-npx esbuild "$RUNNER_ENTRY" \
+pnpm exec esbuild "$RUNNER_ENTRY" \
   --bundle \
   --format=esm \
   --platform=node \
