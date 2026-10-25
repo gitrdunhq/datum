@@ -165,10 +165,10 @@ def test_ac3_unknown_runtime_kind_exits_2_with_named_message(repo):
     _assert_usage_error(repo, result, "runtime_kind_unknown: bogus")
 
 
-def test_ac3_runtime_kind_pi_is_unavailable_and_exits_2(repo):
+def test_ac3_runtime_kind_pi_without_stage_script_exits_2(repo):
     _write_config(repo, {"skills_dir": str(repo.pkg_skills), "runtime": {**RUNTIME_OK, "kind": "pi"}})
     result = _run()
-    _assert_usage_error(repo, result, "runtime_kind_unavailable: pi")
+    _assert_usage_error(repo, result, "runtime_stage_script_missing")
 
 
 # --- AC4 ---------------------------------------------------------------

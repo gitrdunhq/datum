@@ -92,7 +92,7 @@ describe('readRuntimeConfig', () => {
   })
 
   it('AC8 (Q5): kind pi is accepted by the parser; rejecting it is the CLI job', () => {
-    const rc = readRuntimeConfig({ runtime: { kind: 'pi', models } })
+    const rc = readRuntimeConfig({ runtime: { kind: 'pi', models, stage_script: '/x/stage.sh' } })
     expect(rc.kind).toBe('pi')
     expect(rc.models).toEqual(models)
     expect(rc.priority).toBe('batch')
